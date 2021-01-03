@@ -79,6 +79,7 @@ bool OneLockGroup::TryCapture (KernelModeGuard::RAII &kernelModeGuard)
     if (TryCapture (lock_, next_, kernelModeGuard))
     {
         lock_.Nullify ();
+        delete this;
         return true;
     }
     else
@@ -184,6 +185,7 @@ bool MultipleLockGroup::TryCapture (KernelModeGuard::RAII &kernelModeGuard)
             lock.Nullify ();
         }
 
+        delete this;
         return true;
     }
     else

@@ -184,6 +184,12 @@ void ReadLock::Unlock (bool silently, KernelModeGuard::RAII &kernelModeGuard)
         if (!silently)
         {
             InformGroupsAboutUnblock (kernelModeGuard);
+
+            // If there is no readers left, we should inform write lock dependant groups too.
+            if (owner_->readersCount_ == 0)
+            {
+                owner_->Write ().InformGroupsAboutUnblock (kernelModeGuard);
+            }
         }
     }
 }
@@ -235,6 +241,8 @@ void WriteLock::Unlock (bool silently, KernelModeGuard::RAII &kernelModeGuard)
         if (!silently)
         {
             InformGroupsAboutUnblock (kernelModeGuard);
+            // We should inform read lock dependant groups about unblock too.
+            owner_->Read ().InformGroupsAboutUnblock (kernelModeGuard);
         }
     }
 }

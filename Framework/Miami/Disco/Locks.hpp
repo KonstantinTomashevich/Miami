@@ -92,6 +92,8 @@ private:
     friend class AnyLockPointer;
 
     friend class ReadWriteGuard;
+
+    friend class WriteLock;
 };
 
 class WriteLock final : public BaseLock
@@ -119,6 +121,8 @@ private:
     friend class AnyLockPointer;
 
     friend class ReadWriteGuard;
+
+    friend class ReadLock;
 };
 
 class ReadWriteGuard final
