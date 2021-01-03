@@ -27,15 +27,33 @@ enum class LockGroupType
     MULTIPLE
 };
 
+// TODO: Same ideas as with AnyLockPointer.
 class AnyLockGroupPointer final
 {
+public:
+    template <typename LockGroupClass>
+    explicit AnyLockGroupPointer (LockGroupClass *group);
 
+    bool operator == (const AnyLockGroupPointer &other) const;
+
+    bool operator != (const AnyLockGroupPointer &other) const;
+
+private:
+    bool TryCapture (KernelModeGuard::RAII &kernelModeGuard);
+
+    void Invalidate (void *invalidationSourceLock, KernelModeGuard::RAII &kernelModeGuard);
+
+    LockGroupType groupType_;
+    void *group_;
+
+    friend class BaseLock;
 };
 
+// TODO: Use first N bytes in lock instance as identifier (like in virtuals) instead of #lockType_?
 class AnyLockPointer final
 {
 public:
-    template <LockType lockType, typename LockClass>
+    template <typename LockClass>
     explicit AnyLockPointer (LockClass *lock);
 
     kernel_call bool TryLock () const;
@@ -52,13 +70,15 @@ public:
 
     void RegisterSafeGuard (SafeLockGuard *safeGuard, KernelModeGuard::RAII &kernelModeGuard);
 
-    void UnregisterSafeGuard(SafeLockGuard *safeGuard, KernelModeGuard::RAII &kernelModeGuard);
+    void UnregisterSafeGuard (SafeLockGuard *safeGuard, KernelModeGuard::RAII &kernelModeGuard);
 
     Context *GetContext () const;
 
     void Nullify ();
 
-    LockType GetType () const;
+    bool Is (void *raw) const;
+
+    bool IsNull () const;
 
     friend bool TryLockAll (const std::vector <AnyLockPointer> &locks, KernelModeGuard::RAII &kernelModeGuard);
 
@@ -73,9 +93,11 @@ class SafeLockGuard final
 {
 public:
     SafeLockGuard (const SafeLockGuard &another) = delete;
+
     /// Movement is deleted, because it is very ineffective due to kernel call requirement.
     SafeLockGuard (SafeLockGuard &&another) = delete;
-    kernel_call ~SafeLockGuard();
+
+    kernel_call ~SafeLockGuard ();
 
 private:
     /// This type of guard can be constructed only in special cases (for example, by lock groups).
@@ -86,14 +108,23 @@ private:
     AnyLockPointer pointer_;
 
     friend class BaseLock;
+
     friend class OneLockGroup;
+
     friend class MultipleLockGroup;
 };
 
-template <LockType lockType, typename LockClass>
+template <typename LockClass>
 AnyLockPointer::AnyLockPointer (LockClass *lock)
-    : lockType_ (lockType), lock_ (lock)
+    : lockType_ (LockClass::LOCK_TYPE),
+      lock_ (lock)
 {
-    static_assert (lockType == LockClass::LOCK_TYPE, "Found lock type and lock class mismatch!");
+}
+
+template <typename LockGroupClass>
+AnyLockGroupPointer::AnyLockGroupPointer (LockGroupClass *group)
+    : groupType_ (LockGroupClass::LOCK_GROUP_TYPE),
+      group_ (group)
+{
 }
 }

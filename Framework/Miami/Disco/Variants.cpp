@@ -2,9 +2,25 @@
 
 #include <Miami/Disco/Variants.hpp>
 #include <Miami/Disco/Locks.hpp>
+#include <Miami/Disco/LockGroups.hpp>
 
 namespace Miami::Disco
 {
+// TODO: Same ideas as with CALL_LOCK_METHOD.
+#define CALL_LOCK_GROUP_METHOD(MethodName, Default, Args...)                                                \
+if (group_)                                                                                                 \
+{                                                                                                           \
+    switch (groupType_)                                                                                     \
+    {                                                                                                       \
+        case LockGroupType::ONE: return static_cast<OneLockGroup *> (group_)->MethodName (Args);            \
+        case LockGroupType::MULTIPLE: return static_cast<MultipleLockGroup *> (group_)->MethodName (Args);  \
+    }                                                                                                       \
+}                                                                                                           \
+                                                                                                            \
+assert(!group_);                                                                                            \
+return Default;
+
+// TODO: Instead of using switch, create static array?
 #define CALL_LOCK_METHOD(MethodName, Default, Args...)                                         \
 if (lock_)                                                                                     \
 {                                                                                              \
@@ -18,6 +34,26 @@ if (lock_)                                                                      
                                                                                                \
 assert(!lock_);                                                                                \
 return Default;
+
+bool AnyLockGroupPointer::operator == (const AnyLockGroupPointer &other) const
+{
+    return group_ == other.group_;
+}
+
+bool AnyLockGroupPointer::operator != (const AnyLockGroupPointer &other) const
+{
+    return !(other == *this);
+}
+
+bool AnyLockGroupPointer::TryCapture (KernelModeGuard::RAII &kernelModeGuard)
+{
+    CALL_LOCK_GROUP_METHOD(TryCapture, false, kernelModeGuard)
+}
+
+void AnyLockGroupPointer::Invalidate (void *invalidationSourceLock, KernelModeGuard::RAII &kernelModeGuard)
+{
+    CALL_LOCK_GROUP_METHOD(Invalidate, , invalidationSourceLock, kernelModeGuard)
+}
 
 bool AnyLockPointer::TryLock () const
 {
@@ -74,9 +110,14 @@ void AnyLockPointer::Nullify ()
     lock_ = nullptr;
 }
 
-LockType AnyLockPointer::GetType () const
+bool AnyLockPointer::Is (void *raw) const
 {
-    return lockType_;
+    return lock_ == raw;
+}
+
+bool AnyLockPointer::IsNull () const
+{
+    return lock_;
 }
 
 bool TryLockAll (const std::vector <AnyLockPointer> &locks, KernelModeGuard::RAII &kernelModeGuard)
@@ -115,6 +156,8 @@ SafeLockGuard::~SafeLockGuard ()
 SafeLockGuard::SafeLockGuard (const AnyLockPointer &lockPointer, KernelModeGuard::RAII &kernelModeGuard)
     : pointer_ (lockPointer)
 {
+    assert(kernelModeGuard.IsValid ());
+    assert(!pointer_.IsNull ());
     pointer_.RegisterSafeGuard (this, kernelModeGuard);
 }
 

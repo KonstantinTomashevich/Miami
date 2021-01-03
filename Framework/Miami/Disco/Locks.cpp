@@ -27,7 +27,7 @@ BaseLock::~BaseLock ()
         KernelModeGuard::RAII guard = context_->KernelMode ().Enter ();
         for (AnyLockGroupPointer group : dependantGroups_)
         {
-            group.Invalidate (guard);
+            group.Invalidate (this, guard);
         }
 
         for (SafeLockGuard *safeGuard : dependantGuards_)
