@@ -78,6 +78,7 @@ private:
     std::function <void ()> *content_;
 };
 
+// TODO: Multithreaded logging (maybe as separate Evan library).
 class Context final
 {
 public:
