@@ -46,15 +46,6 @@ OneLockGroup::OneLockGroup (const AnyLockPointer &lock, OneLockGroup::NextLambda
     lock_.RegisterLockGroup (AnyLockGroupPointer (this), kernelModeGuard);
 }
 
-OneLockGroup::~OneLockGroup ()
-{
-    if (lock_.GetContext ())
-    {
-        KernelModeGuard::RAII guard = lock_.GetContext ()->KernelMode ().Enter ();
-        lock_.UnregisterLockGroup (AnyLockGroupPointer (this), guard);
-    }
-}
-
 bool OneLockGroup::TryCapture (const AnyLockPointer &lock, OneLockGroup::NextLambda &next,
                                KernelModeGuard::RAII &kernelModeGuard)
 {
@@ -73,13 +64,14 @@ bool OneLockGroup::TryCapture (const AnyLockPointer &lock, OneLockGroup::NextLam
     }
 }
 
-bool OneLockGroup::TryCapture (KernelModeGuard::RAII &kernelModeGuard)
+bool OneLockGroup::TryCapture (void *captureSourceLock, KernelModeGuard::RAII &kernelModeGuard)
 {
     assert(kernelModeGuard.IsValid ());
+    assert(lock_.Is (captureSourceLock));
+
     if (TryCapture (lock_, next_, kernelModeGuard))
     {
-        lock_.Nullify ();
-        delete this;
+        Destruct (kernelModeGuard);
         return true;
     }
     else
@@ -94,7 +86,12 @@ void OneLockGroup::Invalidate (void *invalidationSourceLock, KernelModeGuard::RA
     assert(lock_.Is (invalidationSourceLock));
 
     LockGroupsDetails::Invalidate (lock_.GetContext (), cancel_, kernelModeGuard);
-    lock_.Nullify ();
+    Destruct (kernelModeGuard);
+}
+
+void OneLockGroup::Destruct (KernelModeGuard::RAII &kernelModeGuard)
+{
+    // OneLockGroup invalidation or capture is always triggered by its lock, so there is no need to unregister.
     delete this;
 }
 
@@ -105,42 +102,13 @@ MultipleLockGroup::MultipleLockGroup (std::vector <AnyLockPointer> locks, Multip
       cancel_ (std::move (cancel))
 {
     assert(kernelModeGuard.IsValid ());
-    assert(!locks.empty ());
+    assert(!locks_.empty ());
 
     for (AnyLockPointer &lock : locks_)
     {
         assert(!lock.IsNull ());
         assert(lock.GetContext () == locks_[0].GetContext ());
         lock.RegisterLockGroup (AnyLockGroupPointer (this), kernelModeGuard);
-    }
-}
-
-MultipleLockGroup::~MultipleLockGroup ()
-{
-    if (!locks_.empty ())
-    {
-        // In debug mode, check that either all locks are valid or all locks are invalid.
-        assert((locks_[0].IsNull () &&
-                std::find_if (locks_.begin (), locks_.end (),
-                              [] (AnyLockPointer &lock)
-                              {
-                                  return !lock.IsNull ();
-                              }) == locks_.end ()) ||
-               (!locks_[0].IsNull () &&
-                std::find_if (locks_.begin (), locks_.end (),
-                              [] (AnyLockPointer &lock)
-                              {
-                                  return lock.IsNull ();
-                              }) == locks_.end ()));
-
-        if (locks_[0].GetContext ())
-        {
-            KernelModeGuard::RAII guard = locks_[0].GetContext ()->KernelMode ().Enter ();
-            for (AnyLockPointer &lock : locks_)
-            {
-                lock.UnregisterLockGroup (AnyLockGroupPointer (this), guard);
-            }
-        }
     }
 }
 
@@ -175,17 +143,18 @@ bool MultipleLockGroup::TryCapture (const std::vector <AnyLockPointer> &locks, M
     }
 }
 
-bool MultipleLockGroup::TryCapture (KernelModeGuard::RAII &kernelModeGuard)
+bool MultipleLockGroup::TryCapture (void *captureSourceLock, KernelModeGuard::RAII &kernelModeGuard)
 {
     assert(kernelModeGuard.IsValid ());
+    assert(std::count_if (locks_.begin (), locks_.end (),
+                          [captureSourceLock] (const AnyLockPointer &pointer)
+                          {
+                              return pointer.Is (captureSourceLock);
+                          }) == 1u);
+
     if (TryCapture (locks_, next_, kernelModeGuard))
     {
-        for (AnyLockPointer &lock : locks_)
-        {
-            lock.Nullify ();
-        }
-
-        delete this;
+        Destruct (captureSourceLock, kernelModeGuard);
         return true;
     }
     else
@@ -197,20 +166,28 @@ bool MultipleLockGroup::TryCapture (KernelModeGuard::RAII &kernelModeGuard)
 void MultipleLockGroup::Invalidate (void *invalidationSourceLock, KernelModeGuard::RAII &kernelModeGuard)
 {
     assert(kernelModeGuard.IsValid ());
-    assert(std::find_if (locks_.begin (), locks_.end (),
-                         [invalidationSourceLock] (const AnyLockPointer &pointer)
-                         {
-                             return pointer.Is (invalidationSourceLock);
-                         }) != locks_.end ());
+    assert(std::count_if (locks_.begin (), locks_.end (),
+                          [invalidationSourceLock] (const AnyLockPointer &pointer)
+                          {
+                              return pointer.Is (invalidationSourceLock);
+                          }) == 1u);
 
     if (!locks_.empty ())
     {
         LockGroupsDetails::Invalidate (locks_[0].GetContext (), cancel_, kernelModeGuard);
     }
 
+    Destruct (invalidationSourceLock, kernelModeGuard);
+}
+
+void MultipleLockGroup::Destruct (void *skipLock, KernelModeGuard::RAII &kernelModeGuard)
+{
     for (AnyLockPointer &lock : locks_)
     {
-        lock.Nullify ();
+        if (!lock.Is (skipLock))
+        {
+            lock.UnregisterLockGroup (AnyLockGroupPointer (this), kernelModeGuard);
+        }
     }
 
     delete this;

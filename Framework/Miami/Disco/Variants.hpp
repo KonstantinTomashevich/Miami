@@ -16,14 +16,14 @@ class SafeLockGuard;
 
 enum class LockType
 {
-    LOCK,
+    LOCK = 0,
     READ_LOCK,
     WRITE_LOCK
 };
 
 enum class LockGroupType
 {
-    ONE,
+    ONE = 0,
     MULTIPLE
 };
 
@@ -39,7 +39,7 @@ public:
     bool operator != (const AnyLockGroupPointer &other) const;
 
 private:
-    bool TryCapture (KernelModeGuard::RAII &kernelModeGuard);
+    bool TryCapture (void *captureSourceLock, KernelModeGuard::RAII &kernelModeGuard);
 
     void Invalidate (void *invalidationSourceLock, KernelModeGuard::RAII &kernelModeGuard);
 

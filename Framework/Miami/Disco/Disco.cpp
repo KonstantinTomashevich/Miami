@@ -22,6 +22,7 @@ void After (const AnyLockPointer &lock, OneLockGroup::NextLambda next, OneLockGr
 void After (const std::vector <AnyLockPointer> &locks, MultipleLockGroup::NextLambda next,
             MultipleLockGroup::CancelLambda cancel)
 {
+    // TODO: It'll be good to check for conflicts inside given locks array: duplicates and read-write pairs.
     assert(locks.size () > 1);
     assert(std::find_if (locks.begin (), locks.end (),
                          [] (const AnyLockPointer &lock)

@@ -45,9 +45,9 @@ bool AnyLockGroupPointer::operator != (const AnyLockGroupPointer &other) const
     return !(other == *this);
 }
 
-bool AnyLockGroupPointer::TryCapture (KernelModeGuard::RAII &kernelModeGuard)
+bool AnyLockGroupPointer::TryCapture (void *captureSourceLock, KernelModeGuard::RAII &kernelModeGuard)
 {
-    CALL_LOCK_GROUP_METHOD(TryCapture, false, kernelModeGuard)
+    CALL_LOCK_GROUP_METHOD(TryCapture, false, captureSourceLock, kernelModeGuard)
 }
 
 void AnyLockGroupPointer::Invalidate (void *invalidationSourceLock, KernelModeGuard::RAII &kernelModeGuard)
@@ -117,7 +117,7 @@ bool AnyLockPointer::Is (void *raw) const
 
 bool AnyLockPointer::IsNull () const
 {
-    return lock_;
+    return !lock_;
 }
 
 bool TryLockAll (const std::vector <AnyLockPointer> &locks, KernelModeGuard::RAII &kernelModeGuard)
@@ -137,6 +137,8 @@ bool TryLockAll (const std::vector <AnyLockPointer> &locks, KernelModeGuard::RAI
                 unlockIterator->Unlock (true, kernelModeGuard);
                 ++unlockIterator;
             }
+
+            return false;
         }
     }
 

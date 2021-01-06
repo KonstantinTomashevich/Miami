@@ -5,7 +5,7 @@
 #include <functional>
 #include <future>
 
-class MutexCheckData final
+class MutexCheckCommons final
 {
 public:
     static constexpr uint32_t chunkSize = 1024;
@@ -14,7 +14,24 @@ public:
 
     std::vector <uint8_t> storage;
 
-    void DoCheck () const;
+    void CheckResults () const;
+};
+
+class ReaderWriterSwarmCheckCommons
+{
+public:
+    using Clock = std::chrono::high_resolution_clock;
+    using TimePoint = std::chrono::time_point <Clock>;
+    using Interval = std::pair <TimePoint, TimePoint>;
+
+    static constexpr uint32_t writersCount = 16;
+    static constexpr uint32_t readersCount = 32;
+    static constexpr uint32_t tasksCount = writersCount + readersCount;
+
+    std::vector <Interval> readersIntervals {readersCount, {Clock::now (), Clock::now ()}};
+    std::vector <Interval> writersIntervals {writersCount, {Clock::now (), Clock::now ()}};
+
+    void CheckResults () const;
 };
 
 template <typename... Args>
@@ -24,6 +41,6 @@ FabricateTestableTask (const std::function <void (Args...)> &base, std::promise 
     return [args..., &finishPromise, &base]
     {
         base (args...);
-        finishPromise.set_value();
+        finishPromise.set_value ();
     };
 }

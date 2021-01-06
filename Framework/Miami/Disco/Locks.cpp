@@ -82,7 +82,7 @@ void BaseLock::InformGroupsAboutUnblock (KernelModeGuard::RAII &kernelModeGuard)
     assert(kernelModeGuard.IsValid ());
     for (auto iterator = dependantGroups_.begin (); iterator != dependantGroups_.end (); ++iterator)
     {
-        if (iterator->TryCapture (kernelModeGuard))
+        if (iterator->TryCapture (this, kernelModeGuard))
         {
             dependantGroups_.erase (iterator);
             return;
@@ -183,6 +183,8 @@ void ReadLock::Unlock (bool silently, KernelModeGuard::RAII &kernelModeGuard)
 
         if (!silently)
         {
+            // TODO: Writers are always executed after all readers and this is not very good.
+            //       Find way to somehow mix readers and writers without given priority to either of them.
             InformGroupsAboutUnblock (kernelModeGuard);
 
             // If there is no readers left, we should inform write lock dependant groups too.

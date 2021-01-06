@@ -10,6 +10,7 @@
 
 namespace Miami::Disco
 {
+// TODO: Rename lock groups to await groups? Sounds better, I think.
 // TODO: TimedOneLockGroup.
 class OneLockGroup
 {
@@ -26,14 +27,16 @@ public:
     OneLockGroup (const AnyLockPointer &lock, NextLambda next,
                   CancelLambda cancel, KernelModeGuard::RAII &kernelModeGuard);
 
-    kernel_call ~OneLockGroup ();
+    ~OneLockGroup () = default;
 
     static bool TryCapture (const AnyLockPointer &lock, NextLambda &next, KernelModeGuard::RAII &kernelModeGuard);
 
 private:
-    bool TryCapture (KernelModeGuard::RAII &kernelModeGuard);
+    bool TryCapture (void *captureSourceLock, KernelModeGuard::RAII &kernelModeGuard);
 
     void Invalidate (void *invalidationSourceLock, KernelModeGuard::RAII &kernelModeGuard);
+
+    void Destruct (KernelModeGuard::RAII &kernelModeGuard);
 
     AnyLockPointer lock_;
     NextLambda next_;
@@ -55,15 +58,17 @@ public:
     MultipleLockGroup (std::vector <AnyLockPointer> locks, NextLambda next,
                        CancelLambda cancel, KernelModeGuard::RAII &kernelModeGuard);
 
-    kernel_call ~MultipleLockGroup ();
+    ~MultipleLockGroup () = default;
 
     static bool TryCapture (const std::vector <AnyLockPointer> &locks, NextLambda &next,
                             KernelModeGuard::RAII &kernelModeGuard);
 
 private:
-    bool TryCapture (KernelModeGuard::RAII &kernelModeGuard);
+    bool TryCapture (void *captureSourceLock, KernelModeGuard::RAII &kernelModeGuard);
 
     void Invalidate (void *invalidationSourceLock, KernelModeGuard::RAII &kernelModeGuard);
+
+    void Destruct (void *skipLock, KernelModeGuard::RAII &kernelModeGuard);
 
     std::vector <AnyLockPointer> locks_;
     NextLambda next_;
