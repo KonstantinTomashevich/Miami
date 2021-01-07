@@ -1,16 +1,15 @@
 #include <cassert>
-#include <chrono>
-#include <thread>
 
 #include <Miami/Evan/Logger.hpp>
 #include <Miami/Evan/GlobalLogger.hpp>
 
 namespace Miami::Evan
 {
+thread_local Logger Logger::threadLocalLogger_ {};
+
 Logger &Logger::Get ()
 {
-    thread_local Logger currentThreadLogger;
-    return currentThreadLogger;
+    return threadLocalLogger_;
 }
 
 Logger::~Logger ()
@@ -31,5 +30,10 @@ void Logger::Log (LogLevel level, const std::string &message)
         GlobalLogger::Instance ().Flush (buffer_);
         buffer_.clear ();
     }
+}
+
+Logger::Logger () noexcept
+    : buffer_ ()
+{
 }
 }

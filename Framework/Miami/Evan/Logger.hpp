@@ -12,15 +12,18 @@ namespace Miami::Evan
 class Logger final
 {
 public:
+    static constexpr uint32_t MAX_BUFFER_SIZE = 25;
+
     static Logger &Get ();
 
     ~Logger();
     free_call void Log (LogLevel level, const std::string &message);
 
 private:
-    Logger () = default;
+    Logger () noexcept;
 
-    static constexpr uint32_t MAX_BUFFER_SIZE = 25;
+    // Warning: thread_local destructors are broken on modern mingw-w64.
+    static thread_local Logger threadLocalLogger_;
 
     std::vector <LogEntry> buffer_;
 };
