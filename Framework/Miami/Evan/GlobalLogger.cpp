@@ -12,11 +12,11 @@ GlobalLogger &GlobalLogger::Instance ()
     return instance_;
 }
 
-void GlobalLogger::AddOutput (LogLevel minLevel, std::unique_ptr <std::ostream> &output)
+void GlobalLogger::AddOutput (const std::shared_ptr <std::ostream> &output, LogLevel minLevel)
 {
     assert(output);
     std::unique_lock <std::mutex> lock {guard_};
-    outputs_.emplace_back (Output {std::move (output), minLevel});
+    outputs_.emplace_back (Output {output, minLevel});
 
     if (minLevel < minAcceptedLevel_)
     {
@@ -33,6 +33,7 @@ GlobalLogger::GlobalLogger () noexcept
 
 void GlobalLogger::Flush (const std::vector <LogEntry> &entries)
 {
+    // TODO: Currently global logger output is not strongly sorted by time. Is it worth it to somehow sort this output?
     assert(!entries.empty ());
     std::unique_lock <std::mutex> lock {guard_};
     std::thread::id threadId = std::this_thread::get_id ();
@@ -41,8 +42,11 @@ void GlobalLogger::Flush (const std::vector <LogEntry> &entries)
     {
         if (entry.level_ >= minAcceptedLevel_)
         {
-            std::time_t time = std::chrono::system_clock::to_time_t (entry.creationTime);
-            char *timeString = std::ctime (&time);
+            time_t time = std::chrono::system_clock::to_time_t (entry.creationTime);
+            // TODO: Output milliseconds?
+            char *timeString = ctime (&time);
+            // Temporary adhok to remove newline from ctime output.
+            timeString[24] = '\0';
 
             for (Output &output : outputs_)
             {

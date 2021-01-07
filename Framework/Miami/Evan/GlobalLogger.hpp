@@ -16,12 +16,12 @@ class GlobalLogger
 public:
     static GlobalLogger &Instance ();
 
-    void AddOutput (LogLevel minLevel, moved_in std::unique_ptr <std::ostream> &output_);
+    void AddOutput (const std::shared_ptr <std::ostream> &output, LogLevel minLevel);
 
 private:
     struct Output
     {
-        std::unique_ptr <std::ostream> output_;
+        std::shared_ptr <std::ostream> output_;
         LogLevel minLevel_;
     };
 
@@ -36,5 +36,6 @@ private:
     LogLevel minAcceptedLevel_;
 
     friend class Logger;
+    friend class GlobalLoggerTestAccess;
 };
 }
