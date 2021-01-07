@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 
 #include <Miami/Disco/LockGroups.hpp>

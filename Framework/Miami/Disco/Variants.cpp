@@ -7,32 +7,32 @@
 namespace Miami::Disco
 {
 // TODO: Same ideas as with CALL_LOCK_METHOD.
-#define CALL_LOCK_GROUP_METHOD(MethodName, Default, Args...)                                                \
-if (group_)                                                                                                 \
-{                                                                                                           \
-    switch (groupType_)                                                                                     \
-    {                                                                                                       \
-        case LockGroupType::ONE: return static_cast<OneLockGroup *> (group_)->MethodName (Args);            \
-        case LockGroupType::MULTIPLE: return static_cast<MultipleLockGroup *> (group_)->MethodName (Args);  \
-    }                                                                                                       \
-}                                                                                                           \
-                                                                                                            \
-assert(!group_);                                                                                            \
+#define CALL_LOCK_GROUP_METHOD(MethodName, Default, ...)                                                           \
+if (group_)                                                                                                        \
+{                                                                                                                  \
+    switch (groupType_)                                                                                            \
+    {                                                                                                              \
+        case LockGroupType::ONE: return static_cast<OneLockGroup *> (group_)->MethodName (__VA_ARGS__);            \
+        case LockGroupType::MULTIPLE: return static_cast<MultipleLockGroup *> (group_)->MethodName (__VA_ARGS__);  \
+    }                                                                                                              \
+}                                                                                                                  \
+                                                                                                                   \
+assert(!group_);                                                                                                   \
 return Default;
 
 // TODO: Instead of using switch, create static array?
-#define CALL_LOCK_METHOD(MethodName, Default, Args...)                                         \
-if (lock_)                                                                                     \
-{                                                                                              \
-    switch (lockType_)                                                                         \
-    {                                                                                          \
-        case LockType::LOCK: return static_cast<Lock *> (lock_)->MethodName (Args);            \
-        case LockType::READ_LOCK: return static_cast<ReadLock *> (lock_)->MethodName (Args);   \
-        case LockType::WRITE_LOCK: return static_cast<WriteLock *> (lock_)->MethodName (Args); \
-    }                                                                                          \
-}                                                                                              \
-                                                                                               \
-assert(!lock_);                                                                                \
+#define CALL_LOCK_METHOD(MethodName, Default, ...)                                                    \
+if (lock_)                                                                                            \
+{                                                                                                     \
+    switch (lockType_)                                                                                \
+    {                                                                                                 \
+        case LockType::LOCK: return static_cast<Lock *> (lock_)->MethodName (__VA_ARGS__);            \
+        case LockType::READ_LOCK: return static_cast<ReadLock *> (lock_)->MethodName (__VA_ARGS__);   \
+        case LockType::WRITE_LOCK: return static_cast<WriteLock *> (lock_)->MethodName (__VA_ARGS__); \
+    }                                                                                                 \
+}                                                                                                     \
+                                                                                                      \
+assert(!lock_);                                                                                       \
 return Default;
 
 bool AnyLockGroupPointer::operator == (const AnyLockGroupPointer &other) const
