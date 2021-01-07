@@ -13,6 +13,7 @@ macro(add_test_subdirectory DIRECTORY_NAME)
 endmacro()
 
 add_test_subdirectory(Disco)
+add_test_subdirectory(Evan)
 add_test_subdirectory(Hotline)
 add_test_subdirectory(Janitor)
 add_test_subdirectory(Richard)

@@ -119,7 +119,7 @@ BOOST_AUTO_TEST_CASE (AfterOneLockCaptureLockGuard)
 
         Miami::Disco::After (Miami::Disco::AnyLockPointer (&lock), onNext);
         finished.get_future ().wait ();
-        BOOST_REQUIRE(capturedGuard != nullptr);
+        BOOST_REQUIRE(capturedGuard);
         BOOST_REQUIRE_MESSAGE(!lock.TryLock (), "Lock should be captured even after task execution.");
     }
 }
@@ -351,7 +351,7 @@ BOOST_AUTO_TEST_CASE (AfterTwoLocksCaptureLockGuard)
             {Miami::Disco::AnyLockPointer (&firstLock), Miami::Disco::AnyLockPointer (&secondLock)}, onNext);
         finished.get_future ().wait ();
 
-        BOOST_REQUIRE(capturedGuard != nullptr);
+        BOOST_REQUIRE(capturedGuard);
         BOOST_REQUIRE_MESSAGE(!firstLock.TryLock (), "First lock should be captured even after task execution.");
         BOOST_REQUIRE_MESSAGE(secondLock.TryLock (), "Second lock should be free after task execution.");
     }
