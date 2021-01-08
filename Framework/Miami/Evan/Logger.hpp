@@ -26,5 +26,7 @@ private:
     static thread_local Logger threadLocalLogger_;
 
     std::vector <LogEntry> buffer_;
+
+    // TODO: Maybe add optional local output to file?
 };
 }
