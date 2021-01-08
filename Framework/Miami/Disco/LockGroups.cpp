@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 
 #include <Miami/Disco/LockGroups.hpp>
@@ -68,6 +69,7 @@ bool OneLockGroup::TryCapture (void *captureSourceLock, KernelModeGuard::RAII &k
 {
     assert(kernelModeGuard.IsValid ());
     assert(lock_.Is (captureSourceLock));
+    assert(lock_.GetContext ());
 
     if (TryCapture (lock_, next_, kernelModeGuard))
     {
@@ -124,6 +126,8 @@ bool MultipleLockGroup::TryCapture (const std::vector <AnyLockPointer> &locks, M
     }
 
     Context *context = locks[0].GetContext ();
+    assert(context);
+
     if (context && TryLockAll (locks, kernelModeGuard))
     {
         std::vector <std::shared_ptr <SafeLockGuard>> guards;
@@ -174,6 +178,7 @@ void MultipleLockGroup::Invalidate (void *invalidationSourceLock, KernelModeGuar
 
     if (!locks_.empty ())
     {
+        assert(locks_[0].GetContext ());
         LockGroupsDetails::Invalidate (locks_[0].GetContext (), cancel_, kernelModeGuard);
     }
 

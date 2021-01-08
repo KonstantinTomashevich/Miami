@@ -1,5 +1,7 @@
 #include "Utils.hpp"
 
+#include <array>
+
 #include <boost/test/unit_test.hpp>
 #include <boost/format.hpp>
 

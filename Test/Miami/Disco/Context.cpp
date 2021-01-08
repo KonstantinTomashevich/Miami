@@ -72,8 +72,8 @@ BOOST_AUTO_TEST_CASE (LotsOfSeparateTasks)
     std::vector <uint64_t> results;
     std::vector <std::promise <void>> finishes;
 
-    constexpr uint32_t runsCount = 10;
-    constexpr uint64_t tasksCount = 8192;
+    static constexpr uint32_t runsCount = 10;
+    static constexpr uint64_t tasksCount = 8192;
 
     results.resize (tasksCount, 0);
     for (uint64_t taskIndex = 0; taskIndex < tasksCount; ++taskIndex)
