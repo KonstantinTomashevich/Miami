@@ -14,12 +14,12 @@ enum class LogLevel
     ERROR
 };
 
-const char *LogLevelName (LogLevel level);
+const char *GetLogLevelName (LogLevel level);
 
 struct LogEntry
 {
     std::string content_;
-    std::chrono::time_point<std::chrono::system_clock> creationTime;
+    std::chrono::time_point<std::chrono::system_clock> creationTime_;
     LogLevel level_;
 };
 }

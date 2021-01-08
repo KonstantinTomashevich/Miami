@@ -27,10 +27,10 @@ BOOST_AUTO_TEST_SUITE (Evan)
 
 std::string CleanLogForTest (const std::string &log)
 {
-    static const std::regex logThreadAndTimeRemovedRegex {R"(\[.+\]\s)"};
+    static const std::regex logThreadAndTimeRemoverRegex {R"(\[.+\]\s)"};
     std::string result;
     std::regex_replace (
-        std::back_inserter (result), log.begin (), log.end (), logThreadAndTimeRemovedRegex, "");
+        std::back_inserter (result), log.begin (), log.end (), logThreadAndTimeRemoverRegex, "");
     return result;
 }
 

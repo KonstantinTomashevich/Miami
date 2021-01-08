@@ -42,7 +42,7 @@ void GlobalLogger::Flush (const std::vector <LogEntry> &entries)
     {
         if (entry.level_ >= minAcceptedLevel_)
         {
-            time_t time = std::chrono::system_clock::to_time_t (entry.creationTime);
+            time_t time = std::chrono::system_clock::to_time_t (entry.creationTime_);
             // TODO: Output milliseconds?
             char *timeString = ctime (&time);
             // Temporary adhok to remove newline from ctime output.
@@ -54,7 +54,7 @@ void GlobalLogger::Flush (const std::vector <LogEntry> &entries)
                 if (entry.level_ >= output.minLevel_ && output.output_)
                 {
                     (*output.output_) << "[thread " << threadId << "] [" << timeString << "] " <<
-                                      LogLevelName (entry.level_) << " " << entry.content_ << std::endl;
+                                      GetLogLevelName (entry.level_) << " " << entry.content_ << std::endl;
                 }
             }
         }

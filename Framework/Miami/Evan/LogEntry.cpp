@@ -4,7 +4,7 @@
 
 namespace Miami::Evan
 {
-const char *LogLevelName (LogLevel level)
+const char *GetLogLevelName (LogLevel level)
 {
     switch (level)
     {
