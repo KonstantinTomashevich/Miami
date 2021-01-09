@@ -104,12 +104,94 @@ template <DataType dataType>
 struct DataContainer <dataType, true>
 {
     typename DataTypeToCxxType <dataType>::Type value_;
+
+    bool operator == (const DataContainer <dataType, true> &another) const
+    {
+        return value_ == another.value_;
+    }
+
+    bool operator != (const DataContainer <dataType, true> &another) const
+    {
+        return !(another == *this);
+    }
+
+    bool operator < (const DataContainer <dataType, true> &another) const
+    {
+        return value_ < another.value_;
+    }
+
+    bool operator > (const DataContainer <dataType, true> &another) const
+    {
+        return another < *this;
+    }
+
+    bool operator <= (const DataContainer <dataType, true> &another) const
+    {
+        return !(another < *this);
+    }
+
+    bool operator >= (const DataContainer <dataType, true> &another) const
+    {
+        return !(*this < another);
+    }
 };
 
 template <DataType dataType>
 struct DataContainer <dataType, false>
 {
     std::unique_ptr <typename DataTypeToCxxType <dataType>::Type> value_;
+
+    bool operator == (const DataContainer <dataType, false> &another) const
+    {
+        if (value_ == nullptr)
+        {
+            return another.value_ == nullptr;
+        }
+        else if (another.value_ == nullptr)
+        {
+            return false;
+        }
+        else
+        {
+            return *value_ == *another.value_;
+        }
+    }
+
+    bool operator != (const DataContainer <dataType, false> &another) const
+    {
+        return !(another == *this);
+    }
+
+    bool operator < (const DataContainer <dataType, false> &another) const
+    {
+        if (value_ == nullptr)
+        {
+            return another.value_ != nullptr;
+        }
+        else if (another.value_ == nullptr)
+        {
+            return false;
+        }
+        else
+        {
+            return *value_ < *another.value_;
+        }
+    }
+
+    bool operator > (const DataContainer <dataType, false> &another) const
+    {
+        return another < *this;
+    }
+
+    bool operator <= (const DataContainer <dataType, false> &another) const
+    {
+        return !(another < *this);
+    }
+
+    bool operator >= (const DataContainer <dataType, false> &another) const
+    {
+        return !(*this < another);
+    }
 };
 
 class AnyDataContainer final
@@ -137,6 +219,18 @@ public:
     Container &Get ();
 
     const Container &Get () const;
+
+    bool operator == (const AnyDataContainer &another) const;
+
+    bool operator != (const AnyDataContainer &another) const;
+
+    bool operator < (const AnyDataContainer &another) const;
+
+    bool operator > (const AnyDataContainer &another) const;
+
+    bool operator <= (const AnyDataContainer &another) const;
+
+    bool operator >= (const AnyDataContainer &another) const;
 
 private:
     Container container_;

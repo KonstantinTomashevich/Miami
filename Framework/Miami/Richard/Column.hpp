@@ -24,7 +24,7 @@ public:
 private:
     ColumnInfo info_;
 
-    // TODO: Add associated header file and its managment.
+    // TODO: Add associated header file and its management.
 
     // TODO: Temporary solution. Will be replaced with something like memory mapped files later.
     std::unordered_map <AnyDataId, AnyDataContainer> values_;
