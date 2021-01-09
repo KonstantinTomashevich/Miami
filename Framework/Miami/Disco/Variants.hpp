@@ -99,6 +99,8 @@ public:
 
     kernel_call ~SafeLockGuard ();
 
+    bool Is (void *raw) const;
+
 private:
     /// This type of guard can be constructed only in special cases (for example, by lock groups).
     SafeLockGuard (const AnyLockPointer &lockPointer, KernelModeGuard::RAII &kernelModeGuard);

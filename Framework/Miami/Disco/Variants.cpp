@@ -155,6 +155,11 @@ SafeLockGuard::~SafeLockGuard ()
     }
 }
 
+bool SafeLockGuard::Is (void *raw) const
+{
+    return pointer_.Is (raw);
+}
+
 SafeLockGuard::SafeLockGuard (const AnyLockPointer &lockPointer, KernelModeGuard::RAII &kernelModeGuard)
     : pointer_ (lockPointer)
 {
