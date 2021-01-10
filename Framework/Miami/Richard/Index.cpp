@@ -154,13 +154,8 @@ Index::~Index ()
     }
 }
 
-ResultCode Index::OnInsert (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard, AnyDataId insertedRowId)
+ResultCode Index::OnInsert (AnyDataId insertedRowId)
 {
-    if (!table_->CheckWriteGuard (tableWriteGuard))
-    {
-        return ResultCode::INVARIANTS_VIOLATED;
-    }
-
     // We don't lock cursor management guard here, because deletion callback could only be called by
     // thread with table write access. I hope, this uncheckable from here invariant won't be broken.
 
@@ -179,7 +174,7 @@ ResultCode Index::OnInsert (const std::shared_ptr <Disco::SafeLockGuard> &tableW
         assert (false);
 
         // As fallback behaviour, treat such inserts as updates.
-        return OnUpdate (tableWriteGuard, insertedRowId);
+        return OnUpdate (insertedRowId);
     }
     else
     {
@@ -198,36 +193,26 @@ ResultCode Index::OnInsert (const std::shared_ptr <Disco::SafeLockGuard> &tableW
     }
 }
 
-ResultCode Index::OnUpdate (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard, AnyDataId updatedRowId)
+ResultCode Index::OnUpdate (AnyDataId updatedRowId)
 {
-    if (!table_->CheckWriteGuard (tableWriteGuard))
-    {
-        return ResultCode::INVARIANTS_VIOLATED;
-    }
-
     // We don't lock cursor management guard here, because deletion callback could only be called by
     // thread with table write access. I hope, this uncheckable from here invariant won't be broken.
 
     // Simplest strategy for update processing is delete-insert combination.
     // And there is no better without explicit list of updated columns.
-    ResultCode deleteResult = OnDelete (tableWriteGuard, updatedRowId);
+    ResultCode deleteResult = OnDelete (updatedRowId);
     if (deleteResult != ResultCode::OK)
     {
         return deleteResult;
     }
     else
     {
-        return OnInsert (tableWriteGuard, updatedRowId);
+        return OnInsert (updatedRowId);
     }
 }
 
-ResultCode Index::OnDelete (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard, AnyDataId deletedRowId)
+ResultCode Index::OnDelete (AnyDataId deletedRowId)
 {
-    if (!table_->CheckWriteGuard (tableWriteGuard))
-    {
-        return ResultCode::INVARIANTS_VIOLATED;
-    }
-
     // We don't lock cursor management guard here, because deletion callback could only be called by
     // thread with table write access. I hope, this uncheckable from here invariant won't be broken.
 
@@ -281,10 +266,9 @@ ResultCode Index::OnDelete (const std::shared_ptr <Disco::SafeLockGuard> &tableW
     }
 }
 
-bool Index::IsSafeToRemove (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard)
+bool Index::IsSafeToRemove (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard) const
 {
-    table_->CheckWriteGuard (tableWriteGuard);
-    return IsSafeToRemoveInternal ();
+    return table_->CheckWriteGuard (tableWriteGuard) && IsSafeToRemoveInternal ();
 }
 
 const IndexInfo &Index::GetIndexInfo () const
@@ -316,7 +300,7 @@ void Index::CloseCursor (IndexCursor *cursor)
     }
 }
 
-bool Index::IsSafeToRemoveInternal ()
+bool Index::IsSafeToRemoveInternal () const
 {
     return managedCursors_.empty ();
 }
@@ -330,8 +314,32 @@ bool Index::IsRowLess (AnyDataId firstRow, AnyDataId secondRow) const
     {
         for (AnyDataId columnId : info_.columns_)
         {
-            AnyDataContainer *firstValue = table_->GetColumnValue (columnId, firstRow);
-            AnyDataContainer *secondValue = table_->GetColumnValue (columnId, secondRow);
+            const AnyDataContainer *firstValue = nullptr;
+            ResultCode result = table_->GetColumnValue (columnId, firstRow, firstValue);
+
+            static const auto logGetterError = [] (AnyDataId row, AnyDataId column, Table *table)
+            {
+                Evan::Logger::Get ().Log (
+                    Evan::LogLevel::ERROR,
+                    "Unable to get value of row with id " + std::to_string (row) +
+                    " from column with id " + std::to_string (column) + " from table \"" + table->name_ +
+                    "\", considering that this value is null.");
+            };
+
+            if (result != ResultCode::OK)
+            {
+                logGetterError (firstRow, columnId, table_);
+                assert(false);
+            }
+
+            const AnyDataContainer *secondValue = nullptr;
+            result = table_->GetColumnValue (columnId, secondRow, secondValue);
+
+            if (result != ResultCode::OK)
+            {
+                logGetterError (secondRow, columnId, table_);
+                assert(false);
+            }
 
             // Null is less than anything.
             if (firstValue == nullptr && secondValue != nullptr)

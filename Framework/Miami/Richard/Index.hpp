@@ -50,30 +50,31 @@ class Index final
 public:
     Index (Table *table, IndexInfo info);
 
-    Index (const std::pair<Table *, IndexInfo> &initializer);
+    Index (const std::pair <Table *, IndexInfo> &initializer);
 
     ~Index ();
 
-    free_call ResultCode OnInsert (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard,
-                                   AnyDataId insertedRowId);
-
-    free_call ResultCode OnUpdate (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard,
-                                   AnyDataId updatedRowId);
-
-    free_call ResultCode OnDelete (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard,
-                                   AnyDataId deletedRowId);
-
-    free_call bool IsSafeToRemove (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard);
+    free_call bool IsSafeToRemove (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard) const;
 
     free_call const IndexInfo &GetIndexInfo () const;
 
     IndexCursor *OpenCursor ();
 
 private:
+    // On* methods do not check guards, because they could be called from implicitly guarded contexts like cursors.
+    // Because of it, they are marked private, so they could be called only from safe context.
+
+    free_call ResultCode OnInsert (AnyDataId insertedRowId);
+
+    free_call ResultCode OnUpdate (AnyDataId updatedRowId);
+
+    free_call ResultCode OnDelete (AnyDataId deletedRowId);
+
     void CloseCursor (IndexCursor *cursor);
 
-    free_call bool IsSafeToRemoveInternal ();
-    free_call bool IsRowLess(AnyDataId firstRow, AnyDataId secondRow) const;
+    free_call bool IsSafeToRemoveInternal () const;
+
+    free_call bool IsRowLess (AnyDataId firstRow, AnyDataId secondRow) const;
 
     IndexInfo info_;
     std::vector <AnyDataId> order_;
@@ -84,5 +85,8 @@ private:
     // TODO: Add persistence (save/load from file).
 
     friend class IndexCursor;
+
+    // TODO: Too many friend classes, too many private methods, reexamine decisions and maybe add proxies.
+    friend class Table;
 };
 }
