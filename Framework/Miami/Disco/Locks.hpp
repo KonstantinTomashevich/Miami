@@ -57,6 +57,8 @@ public:
 
     void Unlock (KernelModeGuard::RAII &kernelModeGuard);
 
+    Lock &operator = (const Lock &another) = delete;
+
 private:
     void Unlock (bool silently, KernelModeGuard::RAII &kernelModeGuard);
 
@@ -133,6 +135,12 @@ public:
     ReadLock &Read ();
 
     WriteLock &Write ();
+
+    const ReadLock &Read () const;
+
+    const WriteLock &Write () const;
+
+    ReadWriteGuard &operator = (const ReadWriteGuard &another) = delete;
 
 private:
     ReadLock read_;

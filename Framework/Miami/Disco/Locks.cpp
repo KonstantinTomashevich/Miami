@@ -268,5 +268,13 @@ WriteLock &ReadWriteGuard::Write ()
     return write_;
 }
 
+const ReadLock &ReadWriteGuard::Read () const
+{
+    return read_;
+}
 
+const WriteLock &ReadWriteGuard::Write () const
+{
+    return write_;
+}
 }

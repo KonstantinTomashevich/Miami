@@ -5,6 +5,7 @@
 
 #include <Miami/Richard/Column.hpp>
 #include <Miami/Richard/Index.hpp>
+#include <Miami/Richard/Table.hpp>
 
 namespace Miami::Richard
 {
@@ -17,7 +18,7 @@ IndexCursor::~IndexCursor ()
     }
 }
 
-Error IndexCursor::Advance (int64_t step)
+ResultCode IndexCursor::Advance (int64_t step)
 {
     assert (sourceIndex_);
     if (sourceIndex_)
@@ -28,12 +29,12 @@ Error IndexCursor::Advance (int64_t step)
             if (-step > position_)
             {
                 position_ = 0;
-                return Error::CURSOR_ADVANCE_STOPPED_AT_BEGIN;
+                return ResultCode::CURSOR_ADVANCE_STOPPED_AT_BEGIN;
             }
             else
             {
                 position_ += step;
-                return Error::OK;
+                return ResultCode::OK;
             }
         }
         else
@@ -42,21 +43,21 @@ Error IndexCursor::Advance (int64_t step)
             if (position_ > sourceIndex_->order_.size ())
             {
                 position_ = sourceIndex_->order_.size ();
-                return Error::CURSOR_ADVANCE_STOPPED_AT_END;
+                return ResultCode::CURSOR_ADVANCE_STOPPED_AT_END;
             }
             else
             {
-                return Error::OK;
+                return ResultCode::OK;
             }
         }
     }
     else
     {
-        return Error::INVARIANTS_VIOLATED;
+        return ResultCode::INVARIANTS_VIOLATED;
     }
 }
 
-Error IndexCursor::GetCurrent (AnyDataId &output) const
+ResultCode IndexCursor::GetCurrent (AnyDataId &output) const
 {
     assert (sourceIndex_);
     if (sourceIndex_)
@@ -65,16 +66,16 @@ Error IndexCursor::GetCurrent (AnyDataId &output) const
         if (position_ < sourceIndex_->order_.size ())
         {
             output = sourceIndex_->order_[position_];
-            return Error::OK;
+            return ResultCode::OK;
         }
         else
         {
-            return Error::CURSOR_GET_CURRENT_UNABLE_TO_GET_FROM_END;
+            return ResultCode::CURSOR_GET_CURRENT_UNABLE_TO_GET_FROM_END;
         }
     }
     else
     {
-        return Error::INVARIANTS_VIOLATED;
+        return ResultCode::INVARIANTS_VIOLATED;
     }
 }
 
@@ -131,6 +132,11 @@ Index::Index (Table *table, IndexInfo info)
     }
 }
 
+Index::Index (const std::pair <Table *, IndexInfo> &initializer)
+    : Index (initializer.first, initializer.second)
+{
+}
+
 Index::~Index ()
 {
     // We don't lock cursor management guard here, because index destruction could only be initiated
@@ -148,9 +154,13 @@ Index::~Index ()
     }
 }
 
-void Index::OnInsert (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard, AnyDataId insertedRowId)
+ResultCode Index::OnInsert (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard, AnyDataId insertedRowId)
 {
-    AssertTableWriteGuard (tableWriteGuard);
+    if (!table_->CheckWriteGuard (tableWriteGuard))
+    {
+        return ResultCode::INVARIANTS_VIOLATED;
+    }
+
     // We don't lock cursor management guard here, because deletion callback could only be called by
     // thread with table write access. I hope, this uncheckable from here invariant won't be broken.
 
@@ -169,7 +179,7 @@ void Index::OnInsert (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGu
         assert (false);
 
         // As fallback behaviour, treat such inserts as updates.
-        OnUpdate (tableWriteGuard, insertedRowId);
+        return OnUpdate (tableWriteGuard, insertedRowId);
     }
     else
     {
@@ -184,24 +194,40 @@ void Index::OnInsert (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGu
         }
 
         order_.insert (iterator, insertedRowId);
+        return ResultCode::OK;
     }
 }
 
-void Index::OnUpdate (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard, AnyDataId updatedRowId)
+ResultCode Index::OnUpdate (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard, AnyDataId updatedRowId)
 {
-    AssertTableWriteGuard (tableWriteGuard);
+    if (!table_->CheckWriteGuard (tableWriteGuard))
+    {
+        return ResultCode::INVARIANTS_VIOLATED;
+    }
+
     // We don't lock cursor management guard here, because deletion callback could only be called by
     // thread with table write access. I hope, this uncheckable from here invariant won't be broken.
 
     // Simplest strategy for update processing is delete-insert combination.
     // And there is no better without explicit list of updated columns.
-    OnDelete (tableWriteGuard, updatedRowId);
-    OnInsert (tableWriteGuard, updatedRowId);
+    ResultCode deleteResult = OnDelete (tableWriteGuard, updatedRowId);
+    if (deleteResult != ResultCode::OK)
+    {
+        return deleteResult;
+    }
+    else
+    {
+        return OnInsert (tableWriteGuard, updatedRowId);
+    }
 }
 
-void Index::OnDelete (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard, AnyDataId deletedRowId)
+ResultCode Index::OnDelete (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard, AnyDataId deletedRowId)
 {
-    AssertTableWriteGuard (tableWriteGuard);
+    if (!table_->CheckWriteGuard (tableWriteGuard))
+    {
+        return ResultCode::INVARIANTS_VIOLATED;
+    }
+
     // We don't lock cursor management guard here, because deletion callback could only be called by
     // thread with table write access. I hope, this uncheckable from here invariant won't be broken.
 
@@ -217,7 +243,10 @@ void Index::OnDelete (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGu
             Evan::LogLevel::ERROR,
             "Caught attempt to inform index \"" + info_.name_ + "\" about deletion of item \"" +
             std::to_string (deletedRowId) + ", but there is no such item in order vector!");
+
         assert (false);
+        // Return OK, because formally deletion succeeds if there were already no element to delete.
+        return ResultCode::OK;
     }
     else
     {
@@ -247,13 +276,20 @@ void Index::OnDelete (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGu
                 nextIterator = order_.erase (nextIterator);
             }
         }
+
+        return ResultCode::OK;
     }
 }
 
 bool Index::IsSafeToRemove (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard)
 {
-    AssertTableWriteGuard (tableWriteGuard);
+    table_->CheckWriteGuard (tableWriteGuard);
     return IsSafeToRemoveInternal ();
+}
+
+const IndexInfo &Index::GetIndexInfo () const
+{
+    return info_;
 }
 
 IndexCursor *Index::OpenCursor ()
@@ -280,18 +316,12 @@ void Index::CloseCursor (IndexCursor *cursor)
     }
 }
 
-void Index::AssertTableWriteGuard (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard)
-{
-    assert (tableWriteGuard);
-    assert (tableWriteGuard->Is (&table_->guard_.Write ()));
-}
-
 bool Index::IsSafeToRemoveInternal ()
 {
     return managedCursors_.empty ();
 }
 
-bool Index::IsRowLess (AnyDataId firstRow, AnyDataId secondRaw) const
+bool Index::IsRowLess (AnyDataId firstRow, AnyDataId secondRow) const
 {
     assert(!info_.columns_.empty ());
     assert(table_);
@@ -312,11 +342,11 @@ bool Index::IsRowLess (AnyDataId firstRow, AnyDataId secondRaw) const
             {
                 return false;
             }
-            else if (firstValue != nullptr && secondValue != nullptr)
+            else if (firstValue != nullptr)
             {
                 assert(firstValue->GetType () == secondValue->GetType ());
-
                 bool less = *firstValue < *secondValue;
+
                 if (less)
                 {
                     return true;
@@ -326,6 +356,6 @@ bool Index::IsRowLess (AnyDataId firstRow, AnyDataId secondRaw) const
     }
 
     // If rows are equal, compare them by ids.
-    return firstRow < secondRaw;
+    return firstRow < secondRow;
 }
 }

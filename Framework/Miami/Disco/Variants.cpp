@@ -110,7 +110,7 @@ void AnyLockPointer::Nullify ()
     lock_ = nullptr;
 }
 
-bool AnyLockPointer::Is (void *raw) const
+bool AnyLockPointer::Is (const void *raw) const
 {
     return lock_ == raw;
 }
@@ -155,7 +155,7 @@ SafeLockGuard::~SafeLockGuard ()
     }
 }
 
-bool SafeLockGuard::Is (void *raw) const
+bool SafeLockGuard::Is (const void *raw) const
 {
     return pointer_.Is (raw);
 }

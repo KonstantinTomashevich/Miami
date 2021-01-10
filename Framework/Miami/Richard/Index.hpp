@@ -10,7 +10,7 @@
 #include <Miami/Disco/Variants.hpp>
 
 #include <Miami/Richard/Data.hpp>
-#include <Miami/Richard/Errors.hpp>
+#include <Miami/Richard/ResultCode.hpp>
 
 namespace Miami::Richard
 {
@@ -30,9 +30,9 @@ class IndexCursor final
 public:
     ~IndexCursor ();
 
-    free_call Error Advance (int64_t step);
+    free_call ResultCode Advance (int64_t step);
 
-    free_call Error GetCurrent (AnyDataId &output) const;
+    free_call ResultCode GetCurrent (AnyDataId &output) const;
 
 private:
     free_call IndexCursor (Index *sourceIndex, uint64_t position);
@@ -50,24 +50,30 @@ class Index final
 public:
     Index (Table *table, IndexInfo info);
 
+    Index (const std::pair<Table *, IndexInfo> &initializer);
+
     ~Index ();
 
-    free_call void OnInsert (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard, AnyDataId insertedRowId);
+    free_call ResultCode OnInsert (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard,
+                                   AnyDataId insertedRowId);
 
-    free_call void OnUpdate (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard, AnyDataId updatedRowId);
+    free_call ResultCode OnUpdate (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard,
+                                   AnyDataId updatedRowId);
 
-    free_call void OnDelete (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard, AnyDataId deletedRowId);
+    free_call ResultCode OnDelete (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard,
+                                   AnyDataId deletedRowId);
 
     free_call bool IsSafeToRemove (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard);
+
+    free_call const IndexInfo &GetIndexInfo () const;
 
     IndexCursor *OpenCursor ();
 
 private:
     void CloseCursor (IndexCursor *cursor);
 
-    free_call void AssertTableWriteGuard (const std::shared_ptr <Disco::SafeLockGuard> &tableWriteGuard);
     free_call bool IsSafeToRemoveInternal ();
-    free_call bool IsRowLess(AnyDataId firstRow, AnyDataId secondRaw) const;
+    free_call bool IsRowLess(AnyDataId firstRow, AnyDataId secondRow) const;
 
     IndexInfo info_;
     std::vector <AnyDataId> order_;
