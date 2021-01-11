@@ -55,13 +55,13 @@ ResultCode Table::CreateReadCursor (const std::shared_ptr <Disco::SafeLockGuard>
         return ResultCode::INVARIANTS_VIOLATED;
     }
 
-    auto iterator = indices_.find(indexId);
-    if (iterator == indices_.end())
+    auto iterator = indices_.find (indexId);
+    if (iterator == indices_.end ())
     {
         return ResultCode::INDEX_WITH_GIVEN_ID_NOT_FOUND;
     }
 
-    output = new TableReadCursor(this, iterator->second.OpenCursor());
+    output = new TableReadCursor (this, iterator->second.OpenCursor ());
     return ResultCode::OK;
 }
 
@@ -164,17 +164,18 @@ ResultCode Table::CreateEditCursor (const std::shared_ptr <Disco::SafeLockGuard>
         return ResultCode::INVARIANTS_VIOLATED;
     }
 
-    auto iterator = indices_.find(indexId);
-    if (iterator == indices_.end())
+    auto iterator = indices_.find (indexId);
+    if (iterator == indices_.end ())
     {
         return ResultCode::INDEX_WITH_GIVEN_ID_NOT_FOUND;
     }
 
-    output = new TableEditCursor(this, iterator->second.OpenCursor());
+    output = new TableEditCursor (this, iterator->second.OpenCursor ());
     return ResultCode::OK;
 }
 
-ResultCode Table::AddColumn (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard, const ColumnInfo &info)
+ResultCode Table::AddColumn (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard,
+                             const ColumnInfo &info, AnyDataId &outputId)
 {
     if (!CheckWriteGuard (writeGuard))
     {
@@ -196,7 +197,9 @@ ResultCode Table::AddColumn (const std::shared_ptr <Disco::SafeLockGuard> &write
     }
     else
     {
+        outputId = columnId;
         auto result = columns_.emplace (columnId, ColumnInfo {columnId, info.dataType_, info.name_});
+
         if (result.second)
         {
             return ResultCode::OK;
@@ -254,7 +257,8 @@ ResultCode Table::RemoveColumn (const std::shared_ptr <Disco::SafeLockGuard> &wr
     }
 }
 
-ResultCode Table::AddIndex (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard, const IndexInfo &info)
+ResultCode Table::AddIndex (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard,
+                            const IndexInfo &info, AnyDataId &outputId)
 {
     if (!CheckWriteGuard (writeGuard))
     {
@@ -293,6 +297,7 @@ ResultCode Table::AddIndex (const std::shared_ptr <Disco::SafeLockGuard> &writeG
     }
     else
     {
+        outputId = indexId;
         auto result = indices_.emplace (
             indexId, std::make_pair (this, IndexInfo {indexId, info.name_, info.columns_}));
 
@@ -395,32 +400,31 @@ bool Table::IsSafeToRemove (const std::shared_ptr <Disco::SafeLockGuard> &writeG
 
 bool Table::CheckReadOrWriteGuard (const std::shared_ptr <Disco::SafeLockGuard> &readOrWriteGuard) const
 {
-    if (readOrWriteGuard == nullptr || !(readOrWriteGuard->Is (&guard_.Read ()) ||
-                                         readOrWriteGuard->Is (&guard_.Write ())))
+    if (Disco::IsReadOrWriteCaptured (readOrWriteGuard, guard_))
+    {
+        return true;
+    }
+    else
     {
         Evan::Logger::Get ().Log (Evan::LogLevel::ERROR, "Caught attempt to read table \"" + name_ +
                                                          "\" data without proper read or write guard!");
         assert (false);
         return false;
     }
-    else
-    {
-        return true;
-    }
 }
 
 bool Table::CheckWriteGuard (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard) const
 {
-    if (writeGuard == nullptr || !writeGuard->Is (&guard_.Write ()))
+    if (Disco::IsWriteCaptured (writeGuard, guard_))
+    {
+        return true;
+    }
+    else
     {
         Evan::Logger::Get ().Log (Evan::LogLevel::ERROR, "Caught attempt to edit table \"" + name_ +
                                                          "\" data without proper write guard!");
         assert (false);
         return false;
-    }
-    else
-    {
-        return true;
     }
 }
 

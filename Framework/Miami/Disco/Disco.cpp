@@ -45,4 +45,16 @@ void After (const std::vector <AnyLockPointer> &locks, MultipleLockGroup::NextLa
         }
     }
 }
+
+bool IsReadOrWriteCaptured (
+    const std::shared_ptr <Disco::SafeLockGuard> &readOrWriteGuard, const ReadWriteGuard &guard)
+{
+    return (readOrWriteGuard != nullptr && readOrWriteGuard->Is (&guard.Read ())) ||
+           IsWriteCaptured (readOrWriteGuard, guard);
+}
+
+bool IsWriteCaptured (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard, const ReadWriteGuard &guard)
+{
+    return writeGuard != nullptr && writeGuard->Is (&guard.Write ());
+}
 }

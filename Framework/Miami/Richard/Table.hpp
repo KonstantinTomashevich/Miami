@@ -7,7 +7,7 @@
 
 #include <Miami/Annotations.hpp>
 
-#include <Miami/Disco/Locks.hpp>
+#include <Miami/Disco/Disco.hpp>
 
 #include <Miami/Richard/Column.hpp>
 #include <Miami/Richard/Data.hpp>
@@ -57,11 +57,13 @@ public:
     free_call ResultCode CreateEditCursor (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard,
                                            AnyDataId indexId, TableEditCursor *&output);
 
-    free_call ResultCode AddColumn (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard, const ColumnInfo &info);
+    free_call ResultCode AddColumn (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard,
+                                    const ColumnInfo &info, AnyDataId &outputId);
 
     free_call ResultCode RemoveColumn (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard, AnyDataId id);
 
-    free_call ResultCode AddIndex (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard, const IndexInfo &info);
+    free_call ResultCode AddIndex (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard,
+                                   const IndexInfo &info, AnyDataId &outputId);
 
     free_call ResultCode RemoveIndex (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard, AnyDataId id);
 
