@@ -76,7 +76,7 @@ public:
 
     void Nullify ();
 
-    bool Is (void *raw) const;
+    bool Is (const void *raw) const;
 
     bool IsNull () const;
 
@@ -98,6 +98,8 @@ public:
     SafeLockGuard (SafeLockGuard &&another) = delete;
 
     kernel_call ~SafeLockGuard ();
+
+    bool Is (const void *raw) const;
 
 private:
     /// This type of guard can be constructed only in special cases (for example, by lock groups).
