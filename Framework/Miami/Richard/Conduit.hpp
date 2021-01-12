@@ -11,6 +11,7 @@
 
 namespace Miami::Richard
 {
+// TODO: Add tests for whole Richard library. Don't have time now because of tight deadline.
 class Conduit final
 {
 public:
