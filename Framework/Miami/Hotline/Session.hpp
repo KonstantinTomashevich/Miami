@@ -6,8 +6,6 @@
 
 #include <Miami/Annotations.hpp>
 
-#include <Miami/Evan/Logger.hpp>
-
 #include <Miami/Disco/Disco.hpp>
 
 #include <Miami/Hotline/ResultCode.hpp>
@@ -22,11 +20,11 @@ public:
     explicit Session (Disco::Context *multithreadingContext);
 
     template <typename Entry>
-    ResultCode GetEntry (const std::shared_ptr <Disco::SafeLockGuard> &readOrWriteGuard,
-                         const Entry *&output) const;
+    free_call ResultCode GetEntry (const std::shared_ptr <Disco::SafeLockGuard> &readOrWriteGuard,
+                                   const Entry *&output) const;
 
     template <typename Entry>
-    ResultCode GetEntryForWrite (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard, Entry *&output);
+    free_call ResultCode GetEntryForWrite (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard, Entry *&output);
 
 private:
     free_call bool CheckReadOrWriteGuard (const std::shared_ptr <Disco::SafeLockGuard> &readOrWriteGuard) const;

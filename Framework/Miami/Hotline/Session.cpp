@@ -1,5 +1,7 @@
 #include <cassert>
 
+#include <Miami/Evan/Logger.hpp>
+
 #include <Miami/Hotline/Session.hpp>
 
 namespace Miami::Hotline
