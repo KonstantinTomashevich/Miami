@@ -157,7 +157,7 @@ void SocketSession::WaitForNextMessage ()
             assert ($this);
             assert ($this->valid_);
             assert (!$this->currentMessageParser_);
-            assert (!$this->inputBuffer_.size () == sizeof (MessageTypeId));
+            assert ($this->inputBuffer_.size () == sizeof (MessageTypeId));
 
             MessageTypeId messageType = *(reinterpret_cast<MessageTypeId *>(&$this->inputBuffer_[0]));
             $this->currentMessageParser_ = $this->context_->ConstructParser (messageType);
