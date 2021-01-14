@@ -13,7 +13,7 @@ SocketContext::SocketContext ()
     : sessions_ (),
       parserFactories_ (),
       asioContext_ (),
-      callbacksExecuted_(0)
+      callbacksExecuted_ (0)
 {
 }
 
@@ -104,6 +104,37 @@ MessageParser SocketContext::ConstructParser (MessageTypeId messageType) const
     else
     {
         return iterator->second ();
+    }
+}
+
+boost::asio::ip::tcp::socket &SocketContext::RetrieveSessionSocket (SocketSession *session)
+{
+    assert (session);
+    return session->socket_;
+}
+
+ResultCode SocketContext::AddSession (std::unique_ptr <SocketSession> &session)
+{
+    assert (session);
+    if (session)
+    {
+        ResultCode startResult = session->Start ();
+        if (startResult == ResultCode::OK)
+        {
+            // New session saved only if it's able to start without errors.
+            sessions_.emplace_back (std::move (session));
+        }
+
+        return startResult;
+    }
+    else
+    {
+        Evan::Logger::Get ().Log (
+            Evan::LogLevel::ERROR,
+            "Caught attempt to add null session to context!");
+
+        // Technically, it's OK to ignore nullptr sessions.
+        return ResultCode::OK;
     }
 }
 }

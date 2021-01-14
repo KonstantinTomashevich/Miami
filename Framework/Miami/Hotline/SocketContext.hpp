@@ -30,6 +30,10 @@ public:
 private:
     free_call MessageParser ConstructParser (MessageTypeId messageType) const;
 
+    free_call static boost::asio::ip::tcp::socket &RetrieveSessionSocket (SocketSession *session);
+
+    free_call ResultCode AddSession (moved_in std::unique_ptr <SocketSession> &session);
+
     std::vector <std::unique_ptr <SocketSession>> sessions_;
 
     // TODO: Use flat hash map.
