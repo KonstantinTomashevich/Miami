@@ -9,6 +9,7 @@
 #include <Miami/Evan/Logger.hpp>
 
 #include <Miami/Hotline/SocketSession.hpp>
+#include <Miami/Hotline/SocketContext.hpp>
 
 namespace Miami::Hotline
 {
@@ -60,6 +61,11 @@ ResultCode SocketSession::Write (const std::vector <MemoryRegion> &regions)
     }
 
     return ResultCode::OK;
+}
+
+Session &SocketSession::Data ()
+{
+    return session_;
 }
 
 ResultCode SocketSession::Start ()
@@ -141,7 +147,7 @@ ResultCode SocketSession::WriteInternal (const MemoryRegion &region)
 
 void SocketSession::WaitForNextMessage ()
 {
-    assert(valid_);
+    assert (valid_);
     assert (!currentMessageParser_);
 
     ReadNextChunk (
@@ -180,7 +186,7 @@ void SocketSession::ReadNextChunk (uint64_t chunkSize, std::function <void (Sock
         socket_, boost::asio::buffer (inputBuffer_),
         boost::asio::transfer_exactly (chunkSize),
         [this, chunkSize, successHandler (std::move (onSuccess))]
-            (const boost::system::error_code &error, uint32_t bytesRead) -> void
+            (const boost::system::error_code &error, std::size_t bytesRead) -> void
         {
             if (error)
             {
@@ -188,8 +194,6 @@ void SocketSession::ReadNextChunk (uint64_t chunkSize, std::function <void (Sock
                     Evan::LogLevel::ERROR,
                     "Unable to read next chunk because of socket io error: " + error.message () +
                     ". Socket session invalidated!");
-
-                assert (false);
                 valid_ = false;
             }
             else if (bytesRead != chunkSize)
