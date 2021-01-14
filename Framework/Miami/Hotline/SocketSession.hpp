@@ -33,7 +33,7 @@ public:
 
     ResultCode Write (const std::vector <MemoryRegion> &regions);
 
-    Session &Data();
+    Session &Data ();
 
 private:
     free_call ResultCode Start ();

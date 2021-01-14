@@ -84,7 +84,7 @@ void SocketServer::ContinueAccepting ()
                 {
                     Evan::Logger::Get ().Log (
                         Evan::LogLevel::ERROR,
-                        "Caught error with code " +
+                        "Caught not-ok result code " +
                         std::to_string (static_cast<uint64_t>(registrationResult)) +
                         " during session registration process. Shutting down server!");
                 }

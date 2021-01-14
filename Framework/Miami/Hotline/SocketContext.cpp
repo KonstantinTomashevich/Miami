@@ -26,6 +26,7 @@ ResultCode SocketContext::DoStep ()
 {
     boost::system::error_code error;
     std::size_t callbacksExecuted = asioContext_.poll (error);
+    callbacksExecuted_ += callbacksExecuted;
 
     if (callbacksExecuted_ >= CALLBACKS_PER_CLEANUP_CYCLE)
     {
@@ -43,10 +44,6 @@ ResultCode SocketContext::DoStep ()
                 sessions_.erase (iterator);
             }
         }
-    }
-    else
-    {
-        callbacksExecuted_ += callbacksExecuted;
     }
 
     if (error)

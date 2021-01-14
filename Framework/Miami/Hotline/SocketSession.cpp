@@ -183,8 +183,7 @@ void SocketSession::ReadNextChunk (uint64_t chunkSize, std::function <void (Sock
 {
     inputBuffer_.resize (chunkSize);
     boost::asio::async_read (
-        socket_, boost::asio::buffer (inputBuffer_),
-        boost::asio::transfer_exactly (chunkSize),
+        socket_, boost::asio::buffer (inputBuffer_), boost::asio::transfer_exactly (chunkSize),
         [this, chunkSize, successHandler (std::move (onSuccess))]
             (const boost::system::error_code &error, std::size_t bytesRead) -> void
         {

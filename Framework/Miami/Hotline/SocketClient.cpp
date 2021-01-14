@@ -53,7 +53,7 @@ ResultCode SocketClient::Start (const std::string &host, const std::string &serv
     {
         Evan::Logger::Get ().Log (
             Evan::LogLevel::ERROR,
-            "Unable to receive available endpoints due to io error: " + error.message () + ".");
+            "Unable to connect to endpoint due to io error: " + error.message () + ".");
         return ResultCode::SOCKET_IO_ERROR;
     }
 
