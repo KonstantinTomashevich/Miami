@@ -46,7 +46,7 @@ BOOST_AUTO_TEST_CASE (AfterSimpleLockMutualExclusion)
         Miami::Disco::Lock lock {&context};
         MutexCheckCommons checkData;
 
-        std::function <void (std::shared_ptr <Miami::Disco::SafeLockGuard>, uint8_t)> taskBase =
+        std::function < void (std::shared_ptr <Miami::Disco::SafeLockGuard>, uint8_t) > taskBase =
             [&checkData] (const std::shared_ptr <Miami::Disco::SafeLockGuard> &guard, uint8_t filler)
             {
                 for (uint32_t index = 0; index < MutexCheckCommons::chunkSize; ++index)
@@ -82,14 +82,14 @@ BOOST_AUTO_TEST_CASE (AfterSimpleLockCancel)
         bool canceled = false;
         std::promise <void> finished;
 
-        std::function <void (std::shared_ptr <Miami::Disco::SafeLockGuard>)> onNext =
+        std::function < void (std::shared_ptr <Miami::Disco::SafeLockGuard>) > onNext =
             [&finished] (const std::shared_ptr <Miami::Disco::SafeLockGuard> &)
             {
                 finished.set_value ();
             };
 
 
-        std::function <void ()> onCancel = [&canceled, &finished]
+        std::function < void () > onCancel = [&canceled, &finished]
         {
             canceled = true;
             finished.set_value ();
@@ -110,7 +110,7 @@ BOOST_AUTO_TEST_CASE (AfterOneLockCaptureLockGuard)
         std::shared_ptr <Miami::Disco::SafeLockGuard> capturedGuard = nullptr;
         std::promise <void> finished;
 
-        std::function <void (std::shared_ptr <Miami::Disco::SafeLockGuard>)> onNext =
+        std::function < void (std::shared_ptr <Miami::Disco::SafeLockGuard>) > onNext =
             [&capturedGuard, &finished] (std::shared_ptr <Miami::Disco::SafeLockGuard> guard)
             {
                 capturedGuard = std::move (guard);
@@ -139,7 +139,7 @@ BOOST_AUTO_TEST_CASE (WriteAfterRead)
         TimePoint readPoint;
         TimePoint writePoint;
 
-        std::function <void (std::shared_ptr <Miami::Disco::SafeLockGuard>)> doRead =
+        std::function < void (std::shared_ptr <Miami::Disco::SafeLockGuard>) > doRead =
             [&readAcquired, &readFinished, &readPoint] (const std::shared_ptr <Miami::Disco::SafeLockGuard> &)
             {
                 using namespace std::chrono_literals;
@@ -152,7 +152,7 @@ BOOST_AUTO_TEST_CASE (WriteAfterRead)
         Miami::Disco::After (Miami::Disco::AnyLockPointer (&readWriteGuard.Read ()), doRead);
         readAcquired.get_future ().wait ();
 
-        std::function <void (std::shared_ptr <Miami::Disco::SafeLockGuard>)> doWrite =
+        std::function < void (std::shared_ptr <Miami::Disco::SafeLockGuard>) > doWrite =
             [&writeFinished, &writePoint] (const std::shared_ptr <Miami::Disco::SafeLockGuard> &)
             {
                 writePoint = Clock::now ();
@@ -181,7 +181,7 @@ BOOST_AUTO_TEST_CASE (ReadAfterWrite)
         TimePoint readPoint;
         TimePoint writePoint;
 
-        std::function <void (std::shared_ptr <Miami::Disco::SafeLockGuard>)> doWrite =
+        std::function < void (std::shared_ptr <Miami::Disco::SafeLockGuard>) > doWrite =
             [&writeAcquired, &writeFinished, &writePoint] (const std::shared_ptr <Miami::Disco::SafeLockGuard> &)
             {
                 using namespace std::chrono_literals;
@@ -194,7 +194,7 @@ BOOST_AUTO_TEST_CASE (ReadAfterWrite)
         Miami::Disco::After (Miami::Disco::AnyLockPointer (&readWriteGuard.Write ()), doWrite);
         writeAcquired.get_future ().wait ();
 
-        std::function <void (std::shared_ptr <Miami::Disco::SafeLockGuard>)> doRead =
+        std::function < void (std::shared_ptr <Miami::Disco::SafeLockGuard>) > doRead =
             [&readFinished, &readPoint] (const std::shared_ptr <Miami::Disco::SafeLockGuard> &)
             {
                 readPoint = Clock::now ();
@@ -271,7 +271,7 @@ BOOST_AUTO_TEST_CASE (AfterTwoSimpleLocksMutualExclusion)
         Miami::Disco::Lock secondLock {&context};
         MutexCheckCommons checkData;
 
-        std::function <void (std::vector <std::shared_ptr <Miami::Disco::SafeLockGuard>>, uint8_t)> taskBase =
+        std::function < void (std::vector <std::shared_ptr <Miami::Disco::SafeLockGuard>>, uint8_t) > taskBase =
             [&checkData] (const std::vector <std::shared_ptr <Miami::Disco::SafeLockGuard>> &guards, uint8_t filler)
             {
                 for (uint32_t index = 0; index < MutexCheckCommons::chunkSize; ++index)
@@ -309,13 +309,13 @@ BOOST_AUTO_TEST_CASE (AfterTwoLocksCancel)
         std::promise <void> finished;
         bool canceled = false;
 
-        std::function <void (std::vector <std::shared_ptr <Miami::Disco::SafeLockGuard>>)> onNext =
+        std::function < void (std::vector <std::shared_ptr <Miami::Disco::SafeLockGuard>>) > onNext =
             [&finished] (const std::vector <std::shared_ptr <Miami::Disco::SafeLockGuard>> &)
             {
                 finished.set_value ();
             };
 
-        std::function <void ()> onCancel = [&canceled, &finished]
+        std::function < void () > onCancel = [&canceled, &finished]
         {
             canceled = true;
             finished.set_value ();
@@ -340,7 +340,7 @@ BOOST_AUTO_TEST_CASE (AfterTwoLocksCaptureLockGuard)
         std::shared_ptr <Miami::Disco::SafeLockGuard> capturedGuard = nullptr;
         std::promise <void> finished;
 
-        std::function <void (std::vector <std::shared_ptr <Miami::Disco::SafeLockGuard>>)> onNext =
+        std::function < void (std::vector <std::shared_ptr <Miami::Disco::SafeLockGuard>>) > onNext =
             [&capturedGuard, &finished] (const std::vector <std::shared_ptr <Miami::Disco::SafeLockGuard>> &guards)
             {
                 capturedGuard = guards[0];
@@ -353,6 +353,8 @@ BOOST_AUTO_TEST_CASE (AfterTwoLocksCaptureLockGuard)
 
         BOOST_REQUIRE(capturedGuard);
         BOOST_REQUIRE_MESSAGE(!firstLock.TryLock (), "First lock should be captured even after task execution.");
+        // TODO: In some super rare cases it fails. I wasn't able to debug it, but it seems that sometimes TryLock
+        //       call enters kernel mode before SafeLockGuard destructor and therefore lock is not free at that moment.
         BOOST_REQUIRE_MESSAGE(secondLock.TryLock (), "Second lock should be free after task execution.");
     }
 }
@@ -376,14 +378,14 @@ BOOST_AUTO_TEST_CASE (AfterMultipleGroupRequiresAllLocksCapture)
         std::promise <void> twoAdded;
         std::promise <void> threeAdded;
 
-        std::function <void (std::vector <std::shared_ptr <Miami::Disco::SafeLockGuard>>)> bothLocksCallback =
+        std::function < void (std::vector <std::shared_ptr <Miami::Disco::SafeLockGuard>>) > bothLocksCallback =
             [&output, &threeAdded] (const std::vector <std::shared_ptr <Miami::Disco::SafeLockGuard>> &guards)
             {
                 output.emplace_back (3u);
                 threeAdded.set_value ();
             };
 
-        std::function <void (std::shared_ptr <Miami::Disco::SafeLockGuard>, uint8_t)> inserterCallback =
+        std::function < void (std::shared_ptr <Miami::Disco::SafeLockGuard>, uint8_t) > inserterCallback =
             [&output] (const std::shared_ptr <Miami::Disco::SafeLockGuard> &guard, uint8_t value)
             {
                 output.emplace_back (value);
