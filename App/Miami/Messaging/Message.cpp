@@ -24,11 +24,6 @@ void WritePODMessage (Type *value, Hotline::SocketSession *session)
     static_assert(std::is_pod_v<std::decay_t<decltype (fieldName)>>);                             \
     Utils::sharedRegionsMap.emplace_back(Hotline::MemoryRegion {&fieldName, sizeof (fieldName)})
 
-#define MAP_STRING_WRITE(fieldName)                                                                      \
-    std::size_t fieldName ## Length = fieldName.length();                                                \
-    MAP_POD_WRITE(fieldName ## Length);                                                                  \
-    Utils::sharedRegionsMap.emplace_back(Hotline::MemoryRegion {fieldName.c_str(), fieldName ## Length})
-
 #define MAP_POD_VECTOR_WRITE(fieldName)                                                                      \
     static_assert(std::is_pod_v<decltype (fieldName)::value_type>);                                          \
     std::size_t fieldName ## Size = fieldName.size();                                                        \
@@ -65,6 +60,96 @@ void WritePODMessage (Type *value, Hotline::SocketSession *session)
     }
 
 #define END_WRITE_MAPPING session->Write (Utils::sharedRegionsMap)
+
+#define VALIDATE_CHUNK_SIZE(expectedSize) \
+    if (expectedSize != chunk.size ())    \
+    {                                     \
+        assert (false);                   \
+        return {0, false};                \
+    }
+
+#define CREATE_POD_PARSER(MessageType)                                                                          \
+    [finishCallback (std::move (callback)), firstCall (true)] (                                                 \
+        const std::vector <uint8_t> &chunk, Hotline::SocketSession *session) -> Hotline::MessageParserStatus    \
+    {                                                                                                           \
+        static_assert (std::is_pod_v <MessageType>);                                                            \
+        if (firstCall)                                                                                          \
+        {                                                                                                       \
+            return {sizeof (MessageType), true};                                                                \
+        }                                                                                                       \
+        else                                                                                                    \
+        {                                                                                                       \
+            VALIDATE_CHUNK_SIZE(sizeof (MessageType));                                                          \
+            MessageType result;                                                                                 \
+            memcpy (&result, &chunk[0], sizeof (MessageType));                                                  \
+                                                                                                                \
+            if (finishCallback)                                                                                 \
+            {                                                                                                   \
+                finishCallback (result, session);                                                               \
+            }                                                                                                   \
+                                                                                                                \
+            return {0, true};                                                                                   \
+        }                                                                                                       \
+    }
+
+#define NEXT_STEP step = static_cast <Step> (static_cast <uint8_t> (step) + 1u)
+
+#define REQUEST_POD(fieldPath)                              \
+    static_assert (std::is_pod_v <decltype (fieldPath)>);   \
+    return {sizeof (fieldPath), true}
+
+#define READ_POD(fieldPath)                                          \
+    static_assert (std::is_pod_v <decltype (fieldPath)>);            \
+    VALIDATE_CHUNK_SIZE(sizeof (fieldPath));                  \
+    memcpy (&fieldPath, &chunk[0], sizeof (fieldPath))
+
+#define REQUEST_POD_VECTOR_SIZE return {sizeof (std::size_t), true};
+
+#define READ_POD_VECTOR_SIZE(fieldPath)                                   \
+    static_assert (std::is_pod_v<decltype (fieldPath)::value_type>);      \
+    VALIDATE_CHUNK_SIZE(sizeof (std::size_t));                            \
+    fieldPath.resize (*reinterpret_cast<const std::size_t *>(&chunk[0]));
+
+#define REQUEST_POD_VECTOR_CONTENT(fieldPath)                        \
+    static_assert (std::is_pod_v<decltype (fieldPath)::value_type>); \
+    return {fieldPath.size (), true}
+
+#define READ_POD_VECTOR_CONTENT(fieldPath)                           \
+    static_assert (std::is_pod_v<decltype (fieldPath)::value_type>); \
+    VALIDATE_CHUNK_SIZE(sizeof (fieldPath.size ()));                 \
+    memcpy (&fieldPath[0], &chunk[0], sizeof (fieldPath.size ()));
+
+#define REQUEST_AND_READ_POD_VECTOR(fieldPath, sizeReaderStep, contentReaderStep, skipLabelName) \
+        static_assert (std::is_pod_v<decltype (fieldPath)::value_type>);                         \
+        NEXT_STEP;                                                                               \
+        REQUEST_POD_VECTOR_SIZE;                                                                 \
+    case sizeReaderStep:                                                                         \
+        READ_POD_VECTOR_SIZE (fieldPath);                                                        \
+        NEXT_STEP;                                                                               \
+                                                                                                 \
+        if (fieldPath.empty())                                                                   \
+        {                                                                                        \
+            goto skipLabelName;                                                                  \
+        }                                                                                        \
+        else                                                                                     \
+        {                                                                                        \
+            REQUEST_POD_VECTOR_CONTENT(fieldPath);                                               \
+        }                                                                                        \
+                                                                                                 \
+    case contentReaderStep:                                                                      \
+        READ_POD_VECTOR_CONTENT (fieldPath)                                                      \
+        skipLabelName: ;
+
+#define CATCH_UNKNOWN_STEP default: return {0, false}
+}
+
+// TODO: A lot of duplication and lack of readibility in parsers.
+
+Hotline::MessageParser VoidOperationResultResponse::CreateParserWithCallback (
+    std::function <void (VoidOperationResultResponse &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    return CREATE_POD_PARSER(VoidOperationResultResponse);
 }
 
 void VoidOperationResultResponse::Write (Hotline::SocketSession *session) const
@@ -72,17 +157,73 @@ void VoidOperationResultResponse::Write (Hotline::SocketSession *session) const
     Utils::WritePODMessage (this, session);
 }
 
+Hotline::MessageParser TableOperationRequest::CreateParserWithCallback (
+    std::function <void (TableOperationRequest &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    return CREATE_POD_PARSER(TableOperationRequest);
+}
+
 void TableOperationRequest::Write (Hotline::SocketSession *session) const
 {
     Utils::WritePODMessage (this, session);
+}
+
+Hotline::MessageParser GetTableNameResponse::CreateParserWithCallback (
+    std::function <void (GetTableNameResponse &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    enum Step : uint8_t
+    {
+        START = 0,
+        READ_QUERY_ID,
+        READ_TABLE_NAME_SIZE,
+        READ_TABLE_NAME_CONTENT
+    };
+
+    return [finishCallback (std::move (callback)),
+        step (Step::START),
+        result (GetTableNameResponse {})]
+
+        (const std::vector <uint8_t> &chunk,
+         Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus
+    {
+        switch (step)
+        {
+            case START:
+                NEXT_STEP;
+                REQUEST_POD (result.queryId_);
+
+            case READ_QUERY_ID:
+            READ_POD (result.queryId_);
+                REQUEST_AND_READ_POD_VECTOR(result.tableName_, READ_TABLE_NAME_SIZE,
+                                            READ_TABLE_NAME_CONTENT, GetTableNameResponse_NAME_READ_SKIP_LABEL);
+
+                if (finishCallback)
+                {
+                    finishCallback (result, session);
+                }
+
+                return {0, true};
+
+            CATCH_UNKNOWN_STEP;
+        }
+    };
 }
 
 void GetTableNameResponse::Write (Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
-    MAP_STRING_WRITE(tableName_);
+    MAP_POD_VECTOR_WRITE(tableName_);
     END_WRITE_MAPPING;
+}
+
+Hotline::MessageParser TablePartOperationRequest::CreateParserWithCallback (
+    std::function <void (TablePartOperationRequest &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    return CREATE_POD_PARSER(TablePartOperationRequest);
 }
 
 void TablePartOperationRequest::Write (Hotline::SocketSession *session) const
@@ -90,9 +231,58 @@ void TablePartOperationRequest::Write (Hotline::SocketSession *session) const
     Utils::WritePODMessage (this, session);
 }
 
+Hotline::MessageParser CreateOperationResultResponse::CreateParserWithCallback (
+    std::function <void (CreateOperationResultResponse &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    return CREATE_POD_PARSER(CreateOperationResultResponse);
+}
+
 void CreateOperationResultResponse::Write (Hotline::SocketSession *session) const
 {
     Utils::WritePODMessage (this, session);
+}
+
+Hotline::MessageParser
+IdsResponse::CreateParserWithCallback (std::function <void (IdsResponse &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    enum Step : uint8_t
+    {
+        START = 0,
+        READ_QUERY_ID,
+        READ_IDS_COUNT,
+        READ_IDS
+    };
+
+    return [finishCallback (std::move (callback)),
+        step (Step::START),
+        result (IdsResponse {})]
+
+        (const std::vector <uint8_t> &chunk,
+         Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus
+    {
+        switch (step)
+        {
+            case START:
+                NEXT_STEP;
+                REQUEST_POD (result.queryId_);
+
+            case READ_QUERY_ID:
+            READ_POD (result.queryId_);
+                REQUEST_AND_READ_POD_VECTOR(result.ids_, READ_IDS_COUNT,
+                                            READ_IDS, IdsResponse_IDS_READ_SKIP_LABEL);
+
+                if (finishCallback)
+                {
+                    finishCallback (result, session);
+                }
+
+                return {0, true};
+
+            CATCH_UNKNOWN_STEP;
+        }
+    };
 }
 
 void IdsResponse::Write (Hotline::SocketSession *session) const
@@ -102,22 +292,165 @@ void IdsResponse::Write (Hotline::SocketSession *session) const
     END_WRITE_MAPPING;
 }
 
+Hotline::MessageParser ColumnInfoResponse::CreateParserWithCallback (
+    std::function <void (ColumnInfoResponse &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    enum Step : uint8_t
+    {
+        START = 0,
+        READ_QUERY_ID,
+        READ_DATA_TYPE,
+        READ_NAME_SIZE,
+        READ_NAME_CONTENT
+    };
+
+    return [finishCallback (std::move (callback)),
+        step (Step::START),
+        result (ColumnInfoResponse {})]
+
+        (const std::vector <uint8_t> &chunk,
+         Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus
+    {
+        switch (step)
+        {
+            case START:
+                NEXT_STEP;
+                REQUEST_POD (result.queryId_);
+
+            case READ_QUERY_ID:
+            READ_POD (result.queryId_);
+                NEXT_STEP;
+                REQUEST_POD (result.dataType_);
+
+            case READ_DATA_TYPE:
+            READ_POD (result.dataType_);
+                REQUEST_AND_READ_POD_VECTOR(result.name_, READ_NAME_SIZE,
+                                            READ_NAME_CONTENT, ColumnInfoResponse_NAME_READ_SKIP_LABEL);
+
+                if (finishCallback)
+                {
+                    finishCallback (result, session);
+                }
+
+                return {0, true};
+
+            CATCH_UNKNOWN_STEP;
+        }
+    };
+}
+
 void ColumnInfoResponse::Write (Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
     MAP_POD_WRITE(dataType_);
-    MAP_STRING_WRITE(name_);
+    MAP_POD_VECTOR_WRITE(name_);
     END_WRITE_MAPPING;
+}
+
+Hotline::MessageParser IndexInfoResponse::CreateParserWithCallback (
+    std::function <void (IndexInfoResponse &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    enum Step : uint8_t
+    {
+        START = 0,
+        READ_QUERY_ID,
+        READ_NAME_SIZE,
+        READ_NAME_CONTENT,
+        READ_COLUMNS_COUNT,
+        READ_COLUMNS
+    };
+
+    return [finishCallback (std::move (callback)),
+        step (Step::START),
+        result (IndexInfoResponse {})]
+
+        (const std::vector <uint8_t> &chunk,
+         Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus
+    {
+        switch (step)
+        {
+            case START:
+                NEXT_STEP;
+                REQUEST_POD (result.queryId_);
+
+            case READ_QUERY_ID:
+            READ_POD (result.queryId_);
+                REQUEST_AND_READ_POD_VECTOR(result.name_, READ_NAME_SIZE,
+                                            READ_NAME_CONTENT, IndexInfoResponse_NAME_READ_SKIP_LABEL);
+
+                REQUEST_AND_READ_POD_VECTOR(result.columns_, READ_COLUMNS_COUNT,
+                                            READ_COLUMNS, IndexInfoResponse_COLUMNS_READ_SKIP_LABEL);
+
+                if (finishCallback)
+                {
+                    finishCallback (result, session);
+                }
+
+                return {0, true};
+
+            CATCH_UNKNOWN_STEP;
+        }
+    };
 }
 
 void IndexInfoResponse::Write (Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
-    MAP_STRING_WRITE(name_);
+    MAP_POD_VECTOR_WRITE(name_);
     MAP_POD_VECTOR_WRITE(columns_);
     END_WRITE_MAPPING;
+}
+
+Hotline::MessageParser SetTableNameRequest::CreateParserWithCallback (
+    std::function <void (SetTableNameRequest &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    enum Step : uint8_t
+    {
+        START = 0,
+        READ_QUERY_ID,
+        READ_TABLE_ID,
+        READ_NEW_NAME_SIZE,
+        READ_NEW_NAME_CONTENT
+    };
+
+    return [finishCallback (std::move (callback)),
+        step (Step::START),
+        result (SetTableNameRequest {})]
+
+        (const std::vector <uint8_t> &chunk,
+         Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus
+    {
+        switch (step)
+        {
+            case START:
+                NEXT_STEP;
+                REQUEST_POD (result.queryId_);
+
+            case READ_QUERY_ID:
+            READ_POD (result.queryId_);
+                NEXT_STEP;
+                REQUEST_POD (result.tableId_);
+
+            case READ_TABLE_ID:
+            READ_POD (result.tableId_);
+                REQUEST_AND_READ_POD_VECTOR(result.newName_, READ_NEW_NAME_SIZE,
+                                            READ_NEW_NAME_CONTENT, SetTableNameRequest_NAME_READ_SKIP_LABEL);
+
+                if (finishCallback)
+                {
+                    finishCallback (result, session);
+                }
+
+                return {0, true};
+
+            CATCH_UNKNOWN_STEP;
+        }
+    };
 }
 
 void SetTableNameRequest::Write (Hotline::SocketSession *session) const
@@ -125,8 +458,62 @@ void SetTableNameRequest::Write (Hotline::SocketSession *session) const
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
     MAP_POD_WRITE(tableId_);
-    MAP_STRING_WRITE(newName_);
+    MAP_POD_VECTOR_WRITE(newName_);
     END_WRITE_MAPPING;
+}
+
+Hotline::MessageParser AddColumnRequest::CreateParserWithCallback (
+    std::function <void (AddColumnRequest &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    enum Step : uint8_t
+    {
+        START = 0,
+        READ_QUERY_ID,
+        READ_TABLE_ID,
+        READ_DATA_TYPE,
+        READ_NAME_SIZE,
+        READ_NAME_CONTENT
+    };
+
+    return [finishCallback (std::move (callback)),
+        step (Step::START),
+        result (AddColumnRequest {})]
+
+        (const std::vector <uint8_t> &chunk,
+         Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus
+    {
+        switch (step)
+        {
+            case START:
+                NEXT_STEP;
+                REQUEST_POD (result.queryId_);
+
+            case READ_QUERY_ID:
+            READ_POD (result.queryId_);
+                NEXT_STEP;
+                REQUEST_POD (result.tableId_);
+
+            case READ_TABLE_ID:
+            READ_POD (result.tableId_);
+                NEXT_STEP;
+                REQUEST_POD (result.dataType_);
+
+            case READ_DATA_TYPE:
+            READ_POD (result.dataType_);
+                REQUEST_AND_READ_POD_VECTOR(result.name_, READ_NAME_SIZE,
+                                            READ_NAME_CONTENT, AddColumnRequest_NAME_READ_SKIP_LABEL);
+
+                if (finishCallback)
+                {
+                    finishCallback (result, session);
+                }
+
+                return {0, true};
+
+            CATCH_UNKNOWN_STEP;
+        }
+    };
 }
 
 void AddColumnRequest::Write (Hotline::SocketSession *session) const
@@ -135,8 +522,61 @@ void AddColumnRequest::Write (Hotline::SocketSession *session) const
     MAP_POD_WRITE(queryId_);
     MAP_POD_WRITE(tableId_);
     MAP_POD_WRITE(dataType_);
-    MAP_STRING_WRITE(name_);
+    MAP_POD_VECTOR_WRITE(name_);
     END_WRITE_MAPPING;
+}
+
+Hotline::MessageParser AddIndexRequest::CreateParserWithCallback (
+    std::function <void (AddIndexRequest &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    enum Step : uint8_t
+    {
+        START = 0,
+        READ_QUERY_ID,
+        READ_TABLE_ID,
+        READ_NAME_SIZE,
+        READ_NAME_CONTENT,
+        READ_COLUMNS_COUNT,
+        READ_COLUMNS
+    };
+
+    return [finishCallback (std::move (callback)),
+        step (Step::START),
+        result (AddIndexRequest {})]
+
+        (const std::vector <uint8_t> &chunk,
+         Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus
+    {
+        switch (step)
+        {
+            case START:
+                NEXT_STEP;
+                REQUEST_POD (result.queryId_);
+
+            case READ_QUERY_ID:
+            READ_POD (result.queryId_);
+                NEXT_STEP;
+                REQUEST_POD (result.tableId_);
+
+            case READ_TABLE_ID:
+            READ_POD (result.tableId_);
+                REQUEST_AND_READ_POD_VECTOR(result.name_, READ_NAME_SIZE,
+                                            READ_NAME_CONTENT, AddIndexRequest_NAME_READ_SKIP_LABEL);
+
+                REQUEST_AND_READ_POD_VECTOR(result.columns_, READ_COLUMNS_COUNT,
+                                            READ_COLUMNS, AddIndexRequest_COLUMNS_READ_SKIP_LABEL);
+
+                if (finishCallback)
+                {
+                    finishCallback (result, session);
+                }
+
+                return {0, true};
+
+            CATCH_UNKNOWN_STEP;
+        }
+    };
 }
 
 void AddIndexRequest::Write (Hotline::SocketSession *session) const
@@ -144,9 +584,16 @@ void AddIndexRequest::Write (Hotline::SocketSession *session) const
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
     MAP_POD_WRITE(tableId_);
-    MAP_STRING_WRITE(name_);
+    MAP_POD_VECTOR_WRITE(name_);
     MAP_POD_VECTOR_WRITE(columns_);
     END_WRITE_MAPPING;
+}
+
+Hotline::MessageParser
+AddRowRequest::CreateParserWithCallback (std::function <void (AddRowRequest &, Hotline::SocketSession *)> &&callback)
+{
+    // TODO: Implement.
+    return Miami::Hotline::MessageParser ();
 }
 
 void AddRowRequest::Write (Hotline::SocketSession *session) const
@@ -158,14 +605,35 @@ void AddRowRequest::Write (Hotline::SocketSession *session) const
     END_WRITE_MAPPING;
 }
 
+Hotline::MessageParser CursorAdvanceRequest::CreateParserWithCallback (
+    std::function <void (CursorAdvanceRequest &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    return CREATE_POD_PARSER(CursorAdvanceRequest);
+}
+
 void CursorAdvanceRequest::Write (Hotline::SocketSession *session) const
 {
     Utils::WritePODMessage (this, session);
 }
 
+Hotline::MessageParser CursorGetRequest::CreateParserWithCallback (
+    std::function <void (CursorGetRequest &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    return CREATE_POD_PARSER(CursorGetRequest);
+}
+
 void CursorGetRequest::Write (Hotline::SocketSession *session) const
 {
     Utils::WritePODMessage (this, session);
+}
+
+Hotline::MessageParser CursorGetResponse::CreateParserWithCallback (
+    std::function <void (CursorGetResponse &, Hotline::SocketSession *)> &&callback)
+{
+    // TODO: Implement.
+    return Miami::Hotline::MessageParser ();
 }
 
 void CursorGetResponse::Write (Hotline::SocketSession *session) const
@@ -174,6 +642,13 @@ void CursorGetResponse::Write (Hotline::SocketSession *session) const
     MAP_POD_WRITE(queryId_);
     MAP_ONE_TABLE_VALUE(value_);
     END_WRITE_MAPPING;
+}
+
+Hotline::MessageParser CursorUpdateRequest::CreateParserWithCallback (
+    std::function <void (CursorUpdateRequest &, Hotline::SocketSession *)> &&callback)
+{
+    // TODO: Implement.
+    return Miami::Hotline::MessageParser ();
 }
 
 void CursorUpdateRequest::Write (Hotline::SocketSession *session) const
@@ -185,9 +660,23 @@ void CursorUpdateRequest::Write (Hotline::SocketSession *session) const
     END_WRITE_MAPPING;
 }
 
+Hotline::MessageParser CursorVoidActionRequest::CreateParserWithCallback (
+    std::function <void (CursorVoidActionRequest &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    return CREATE_POD_PARSER(CursorVoidActionRequest);
+}
+
 void CursorVoidActionRequest::Write (Hotline::SocketSession *session) const
 {
     Utils::WritePODMessage (this, session);
+}
+
+Hotline::MessageParser ConduitVoidActionRequest::CreateParserWithCallback (
+    std::function <void (ConduitVoidActionRequest &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    return CREATE_POD_PARSER(ConduitVoidActionRequest);
 }
 
 void ConduitVoidActionRequest::Write (Hotline::SocketSession *session) const
@@ -195,11 +684,53 @@ void ConduitVoidActionRequest::Write (Hotline::SocketSession *session) const
     Utils::WritePODMessage (this, session);
 }
 
+Hotline::MessageParser AddTableRequest::CreateParserWithCallback (
+    std::function <void (AddTableRequest &, Hotline::SocketSession *)> &&callback)
+{
+    assert (callback);
+    enum Step : uint8_t
+    {
+        START = 0,
+        READ_QUERY_ID,
+        READ_TABLE_NAME_SIZE,
+        READ_TABLE_NAME_CONTENT
+    };
+
+    return [finishCallback (std::move (callback)),
+        step (Step::START),
+        result (AddTableRequest {})]
+
+        (const std::vector <uint8_t> &chunk,
+         Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus
+    {
+        switch (step)
+        {
+            case START:
+                NEXT_STEP;
+                REQUEST_POD (result.queryId_);
+
+            case READ_QUERY_ID:
+            READ_POD (result.queryId_);
+                REQUEST_AND_READ_POD_VECTOR(result.tableName_, READ_TABLE_NAME_SIZE,
+                                            READ_TABLE_NAME_CONTENT, AddTableRequest_NAME_READ_SKIP_LABEL);
+
+                if (finishCallback)
+                {
+                    finishCallback (result, session);
+                }
+
+                return {0, true};
+
+            CATCH_UNKNOWN_STEP;
+        }
+    };
+}
+
 void AddTableRequest::Write (Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
-    MAP_STRING_WRITE(tableName_);
+    MAP_POD_VECTOR_WRITE(tableName_);
     END_WRITE_MAPPING;
 }
 }
