@@ -2,6 +2,10 @@
 
 namespace Miami::App::Messaging
 {
+
+// TODO: A lot of duplication and lack of readibility in parsers. Try to rewrite with
+//       coroutines? Try to use nested parsers instead of macros?
+
 namespace Utils
 {
 thread_local std::vector <Hotline::MemoryRegion> sharedRegionsMap;
@@ -44,6 +48,7 @@ void WritePODMessage (Type *value, Hotline::SocketSession *session)
     assert (data);                                                                                        \
     Utils::sharedRegionsMap.emplace_back (Hotline::MemoryRegion {data, Richard::GetDataTypeSize (type)})
 
+// TODO: Works correctly only if there is only one table value in message.
 #define MAP_ONE_TABLE_VALUE(field)              \
     Utils::dataTypesCache.clear ();             \
     Utils::dataTypesCache.reserve (1);          \
@@ -140,10 +145,68 @@ void WritePODMessage (Type *value, Hotline::SocketSession *session)
         READ_POD_VECTOR_CONTENT (fieldPath)                                                      \
         skipLabelName: ;
 
+#define REQUEST_AND_READ_TABLE_VALUE(valuePath, typeReaderStep, contentReaderStep)               \
+        NEXT_STEP;                                                                               \
+        return {sizeof (Richard::DataType), true};                                               \
+                                                                                                 \
+    case typeReaderStep:                                                                         \
+        VALIDATE_CHUNK_SIZE(sizeof (Richard::DataType));                                         \
+        valuePath = Richard::AnyDataContainer (                                                  \
+            *reinterpret_cast<const Richard::DataType *>(&chunk[0]));                            \
+                                                                                                 \
+        NEXT_STEP;                                                                               \
+        return {Richard::GetDataTypeSize (valuePath.GetType ()), true};                          \
+                                                                                                 \
+    case contentReaderStep:                                                                      \
+        VALIDATE_CHUNK_SIZE(Richard::GetDataTypeSize (valuePath.GetType ()));                    \
+        {                                                                                        \
+            void *data = valuePath.GetDataStartPointer ();                                       \
+            if (data)                                                                            \
+            {                                                                                    \
+                memcpy (data, &chunk[0], Richard::GetDataTypeSize (valuePath.GetType ()));       \
+            }                                                                                    \
+            else                                                                                 \
+            {                                                                                    \
+                assert (false);                                                                  \
+            }                                                                                    \
+        }
+
+#define REQUEST_AND_READ_TABLE_MAPPED_VALUE_VECTOR(fieldPath, counterPath, \
+            countReaderStep, idReaderStep, typeReaderStep, dataReaderStep, \
+            allReadLabelName, readNextLabelName)                                                           \
+        NEXT_STEP;                                                                                         \
+        return {sizeof (std::size_t), true};                                                               \
+                                                                                                           \
+    case countReaderStep:                                                                                  \
+        VALIDATE_CHUNK_SIZE(sizeof (std::size_t));                                                         \
+        fieldPath.resize (*reinterpret_cast <const std::size_t *> (&chunk[0]));                            \
+                                                                                                           \
+        if (fieldPath.empty ())                                                                            \
+        {                                                                                                  \
+            step = dataReaderStep;                                                                         \
+            goto allReadLabelName;                                                                         \
+        }                                                                                                  \
+        else                                                                                               \
+        {                                                                                                  \
+            NEXT_STEP;                                                                                     \
+            readNextLabelName: REQUEST_POD(fieldPath[counterPath].first);                                  \
+        }                                                                                                  \
+                                                                                                           \
+    case idReaderStep:                                                                                     \
+        READ_POD(fieldPath[counterPath].first);                                                            \
+        REQUEST_AND_READ_TABLE_VALUE(fieldPath[counterPath].second, typeReaderStep, dataReaderStep);       \
+        ++counterPath;                                                                                     \
+                                                                                                           \
+        if (counterPath < fieldPath.size ())                                                               \
+        {                                                                                                  \
+            step = idReaderStep;                                                                           \
+            goto readNextLabelName;                                                                        \
+        }                                                                                                  \
+                                                                                                           \
+    allReadLabelName: ;
+
 #define CATCH_UNKNOWN_STEP default: return {0, false}
 }
-
-// TODO: A lot of duplication and lack of readibility in parsers.
 
 Hotline::MessageParser VoidOperationResultResponse::CreateParserWithCallback (
     std::function <void (VoidOperationResultResponse &, Hotline::SocketSession *)> &&callback)
@@ -592,8 +655,49 @@ void AddIndexRequest::Write (Hotline::SocketSession *session) const
 Hotline::MessageParser
 AddRowRequest::CreateParserWithCallback (std::function <void (AddRowRequest &, Hotline::SocketSession *)> &&callback)
 {
-    // TODO: Implement.
-    return Miami::Hotline::MessageParser ();
+    assert (callback);
+    enum Step : uint8_t
+    {
+        START = 0,
+        READ_QUERY_ID,
+        READ_VALUES_COUNT,
+        READ_COLUMN_ID,
+        READ_DATA_TYPE,
+        READ_DATA
+    };
+
+    return [finishCallback (std::move (callback)),
+        step (Step::START),
+
+        // TODO: Adhok, because AnyDataContainer is not copyable.
+        result (std::make_shared <AddRowRequest> ()),
+        valuesRead (std::size_t (0u))]
+
+        (const std::vector <uint8_t> &chunk,
+         Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus
+    {
+        switch (step)
+        {
+            case START:
+                NEXT_STEP;
+                REQUEST_POD (result->queryId_);
+
+            case READ_QUERY_ID:
+            READ_POD (result->queryId_);
+                REQUEST_AND_READ_TABLE_MAPPED_VALUE_VECTOR(
+                    result->values_, valuesRead, READ_VALUES_COUNT, READ_COLUMN_ID, READ_DATA_TYPE, READ_DATA,
+                    CreateParserWithCallback_AllValuesRead, CreateParserWithCallback_ReadNextColumnId);
+
+                if (finishCallback)
+                {
+                    finishCallback (*result, session);
+                }
+
+                return {0, true};
+
+            CATCH_UNKNOWN_STEP;
+        }
+    };
 }
 
 void AddRowRequest::Write (Hotline::SocketSession *session) const
@@ -632,8 +736,45 @@ void CursorGetRequest::Write (Hotline::SocketSession *session) const
 Hotline::MessageParser CursorGetResponse::CreateParserWithCallback (
     std::function <void (CursorGetResponse &, Hotline::SocketSession *)> &&callback)
 {
-    // TODO: Implement.
-    return Miami::Hotline::MessageParser ();
+    assert (callback);
+    enum Step : uint8_t
+    {
+        START = 0,
+        READ_QUERY_ID,
+        READ_DATA_TYPE,
+        READ_DATA
+    };
+
+    return [finishCallback (std::move (callback)),
+        step (Step::START),
+
+        // TODO: Adhok, because AnyDataContainer is not copyable.
+        result (std::make_shared <CursorGetResponse> (
+            CursorGetResponse {0, Richard::AnyDataContainer {}}))]
+
+        (const std::vector <uint8_t> &chunk,
+         Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus
+    {
+        switch (step)
+        {
+            case START:
+                NEXT_STEP;
+                REQUEST_POD (result->queryId_);
+
+            case READ_QUERY_ID:
+            READ_POD (result->queryId_);
+                REQUEST_AND_READ_TABLE_VALUE(result->value_, READ_DATA_TYPE, READ_DATA);
+
+                if (finishCallback)
+                {
+                    finishCallback (*result, session);
+                }
+
+                return {0, true};
+
+            CATCH_UNKNOWN_STEP;
+        }
+    };
 }
 
 void CursorGetResponse::Write (Hotline::SocketSession *session) const
@@ -647,8 +788,55 @@ void CursorGetResponse::Write (Hotline::SocketSession *session) const
 Hotline::MessageParser CursorUpdateRequest::CreateParserWithCallback (
     std::function <void (CursorUpdateRequest &, Hotline::SocketSession *)> &&callback)
 {
-    // TODO: Implement.
-    return Miami::Hotline::MessageParser ();
+    assert (callback);
+    enum Step : uint8_t
+    {
+        START = 0,
+        READ_QUERY_ID,
+        READ_CURSOR_ID,
+        READ_VALUES_COUNT,
+        READ_COLUMN_ID,
+        READ_DATA_TYPE,
+        READ_DATA
+    };
+
+    return [finishCallback (std::move (callback)),
+        step (Step::START),
+
+        // TODO: Adhok, because AnyDataContainer is not copyable.
+        result (std::make_shared <CursorUpdateRequest> ()),
+        valuesRead (std::size_t (0u))]
+
+        (const std::vector <uint8_t> &chunk,
+         Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus
+    {
+        switch (step)
+        {
+            case START:
+                NEXT_STEP;
+                REQUEST_POD (result->queryId_);
+
+            case READ_QUERY_ID:
+            READ_POD (result->queryId_);
+                NEXT_STEP;
+                REQUEST_POD (result->cursorId_);
+
+            case READ_CURSOR_ID:
+            READ_POD (result->cursorId_);
+                REQUEST_AND_READ_TABLE_MAPPED_VALUE_VECTOR(
+                    result->values_, valuesRead, READ_VALUES_COUNT, READ_COLUMN_ID, READ_DATA_TYPE, READ_DATA,
+                    CreateParserWithCallback_AllValuesRead, CreateParserWithCallback_ReadNextColumnId);
+
+                if (finishCallback)
+                {
+                    finishCallback (*result, session);
+                }
+
+                return {0, true};
+
+            CATCH_UNKNOWN_STEP;
+        }
+    };
 }
 
 void CursorUpdateRequest::Write (Hotline::SocketSession *session) const

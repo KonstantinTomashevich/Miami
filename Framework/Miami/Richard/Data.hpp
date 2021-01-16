@@ -228,9 +228,19 @@ public:
         DataContainer <DataType::HUGE_STRING>,
         DataContainer <DataType::BLOB_16KB>>;
 
+    AnyDataContainer ();
+
+    explicit AnyDataContainer (DataType dataType);
+
     template <DataType dataType>
-    explicit AnyDataContainer (moved_in typename DataTypeToCxxType <dataType>::Type &value)
+    explicit AnyDataContainer (moved_in DataContainer <dataType> &value)
         : container_ (std::move (value))
+    {
+    }
+
+    template <DataType dataType>
+    explicit AnyDataContainer (const DataContainer <dataType> &value)
+        : container_ (value)
     {
     }
 
