@@ -134,6 +134,16 @@ struct DataContainer <dataType, true>
     {
         return !(*this < another);
     }
+
+    typename DataTypeToCxxType <dataType>::Type *GetData ()
+    {
+        return &value_;
+    }
+
+    const typename DataTypeToCxxType <dataType>::Type *GetData () const
+    {
+        return &value_;
+    }
 };
 
 template <DataType dataType>
@@ -192,6 +202,16 @@ struct DataContainer <dataType, false>
     {
         return !(*this < another);
     }
+
+    typename DataTypeToCxxType <dataType>::Type *GetData ()
+    {
+        return value_.get ();
+    }
+
+    const typename DataTypeToCxxType <dataType>::Type *GetData () const
+    {
+        return value_.get ();
+    }
 };
 
 class AnyDataContainer final
@@ -231,6 +251,10 @@ public:
     bool operator <= (const AnyDataContainer &another) const;
 
     bool operator >= (const AnyDataContainer &another) const;
+
+    void *GetDataStartPointer ();
+
+    const void *GetDataStartPointer () const;
 
 private:
     Container container_;

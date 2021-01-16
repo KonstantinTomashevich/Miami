@@ -20,7 +20,7 @@ class SocketContext;
 
 struct MemoryRegion
 {
-    void *start_;
+    const void *start_;
     uint64_t length_;
 };
 
