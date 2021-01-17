@@ -163,10 +163,51 @@ void Context::RegisterMessages ()
                 [this] (const Messaging::CursorGetResponse &message, Hotline::SocketSession *session)
                 {
                     std::string output = "Received response to query " + std::to_string (message.queryId_) +
-                                         ". Value type is " + Richard::GetDataTypeName(message.value_.GetType()) +
-                                         ", value view is not supported yet.";
+                                         ". Value type is " + Richard::GetDataTypeName (message.value_.GetType ()) +
+                                         ", value is \"";
 
-                    // TODO: Implement value view.
+                    switch (message.value_.GetType ())
+                    {
+                        case Richard::DataType::INT8:
+                            output += std::to_string (*reinterpret_cast <const int8_t *> (
+                                message.value_.GetDataStartPointer ()));
+                            break;
+
+                        case Richard::DataType::INT16:
+                            output += std::to_string (*reinterpret_cast <const int16_t *> (
+                                message.value_.GetDataStartPointer ()));
+                            break;
+
+                        case Richard::DataType::INT32:
+                            output += std::to_string (*reinterpret_cast <const int32_t *> (
+                                message.value_.GetDataStartPointer ()));
+                            break;
+
+                        case Richard::DataType::INT64:
+                            output += std::to_string (*reinterpret_cast <const int64_t *> (
+                                message.value_.GetDataStartPointer ()));
+                            break;
+
+                        case Richard::DataType::SHORT_STRING:
+                        case Richard::DataType::STRING:
+                        case Richard::DataType::LONG_STRING:
+                        case Richard::DataType::HUGE_STRING:
+                        case Richard::DataType::BLOB_16KB:
+                        {
+                            const char *valuePointer = reinterpret_cast <const char *> (
+                                message.value_.GetDataStartPointer ());
+                            const char *end = valuePointer + Richard::GetDataTypeSize (message.value_.GetType ());
+
+                            while (valuePointer != end && *valuePointer)
+                            {
+                                output += *valuePointer;
+                            }
+
+                            break;
+                        }
+                    }
+
+                    output += "\".\n";
                     AddDelayedOutput (output);
                 });
         });
