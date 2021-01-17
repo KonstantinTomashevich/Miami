@@ -253,7 +253,7 @@ bool InputAndSendRequest (uint64_t nextQueryId, Miami::Hotline::SocketSession *s
             {
                 std::string value;
                 std::cin >> value;
-                memcpy (&value[0], container.GetDataStartPointer (),
+                memcpy (container.GetDataStartPointer (), &value[0],
                         std::min (static_cast<uint32_t>(value.size ()), Miami::Richard::GetDataTypeSize (dataType)));
             }
                 break;

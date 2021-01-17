@@ -105,7 +105,7 @@ struct DataContainer;
 template <DataType dataType>
 struct DataContainer <dataType, true>
 {
-    typename DataTypeToCxxType <dataType>::Type value_;
+    typename DataTypeToCxxType <dataType>::Type value_ {};
 
     bool operator == (const DataContainer <dataType, true> &another) const
     {
@@ -151,7 +151,8 @@ struct DataContainer <dataType, true>
 template <DataType dataType>
 struct DataContainer <dataType, false>
 {
-    std::unique_ptr <typename DataTypeToCxxType <dataType>::Type> value_;
+    std::unique_ptr <typename DataTypeToCxxType <dataType>::Type>
+        value_ {new typename DataTypeToCxxType <dataType>::Type ()};
 
     bool operator == (const DataContainer <dataType, false> &another) const
     {
