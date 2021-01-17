@@ -68,7 +68,7 @@ ResultCode SocketContext::RegisterFactory (MessageTypeId messageType, MessagePar
     }
 
     auto iterator = parserFactories_.find (messageType);
-    if (iterator == parserFactories_.end ())
+    if (iterator != parserFactories_.end ())
     {
         return ResultCode::FACTORY_FOR_MESSAGE_TYPE_IS_ALREADY_REGISTERED;
     }
@@ -110,7 +110,7 @@ boost::asio::ip::tcp::socket &SocketContext::RetrieveSessionSocket (SocketSessio
     return session->socket_;
 }
 
-ResultCode SocketContext::AddSession (std::unique_ptr <SocketSession> &session)
+ResultCode SocketContext::AddSession (SocketSession *session)
 {
     assert (session);
     if (session)
@@ -119,7 +119,7 @@ ResultCode SocketContext::AddSession (std::unique_ptr <SocketSession> &session)
         if (startResult == ResultCode::OK)
         {
             // New session saved only if it's able to start without errors.
-            sessions_.emplace_back (std::move (session));
+            sessions_.emplace_back (session);
         }
 
         return startResult;

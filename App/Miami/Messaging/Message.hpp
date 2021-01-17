@@ -54,6 +54,7 @@ enum class Message
     //                        VOID_OPERATION_RESULT_RESPONSE
 
     REMOVE_COLUMN_REQUEST, // -> VOID_OPERATION_RESULT_RESPONSE
+
     ADD_INDEX_REQUEST, // -> CREATE_OPERATION_RESULT_RESPONSE ||
     //                       VOID_OPERATION_RESULT_RESPONSE
 
@@ -87,7 +88,7 @@ enum class Message
 
 enum class OperationResult
 {
-    // TODO: Fill during server development.
+    OK = 0,
 };
 
 /// For message VOID_OPERATION_RESULT_RESPONSE.

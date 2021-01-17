@@ -32,7 +32,7 @@ private:
 
     free_call static boost::asio::ip::tcp::socket &RetrieveSessionSocket (SocketSession *session);
 
-    free_call ResultCode AddSession (moved_in std::unique_ptr <SocketSession> &session);
+    free_call ResultCode AddSession (moved_in SocketSession *session);
 
     std::vector <std::unique_ptr <SocketSession>> sessions_;
 

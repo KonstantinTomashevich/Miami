@@ -46,8 +46,8 @@ ResultCode SocketClient::Start (const std::string &host, const std::string &serv
         return ResultCode::ENDPOINTS_NOT_FOUND;
     }
 
-    auto socketSession = std::make_unique <SocketSession> (multithreadingContext_, &socketContext_);
-    boost::asio::connect (SocketContext::RetrieveSessionSocket (socketSession.get ()), endpoints, error);
+    auto *socketSession = new SocketSession (multithreadingContext_, &socketContext_);
+    boost::asio::connect (SocketContext::RetrieveSessionSocket (socketSession), endpoints, error);
 
     if (error)
     {
@@ -57,7 +57,13 @@ ResultCode SocketClient::Start (const std::string &host, const std::string &serv
         return ResultCode::SOCKET_IO_ERROR;
     }
 
-    return socketContext_.AddSession (socketSession);
+    ResultCode result = socketContext_.AddSession (socketSession);
+    if (result != ResultCode::OK)
+    {
+        delete socketSession;
+    }
+
+    return result;
 }
 
 SocketContext &SocketClient::CoreContext ()
