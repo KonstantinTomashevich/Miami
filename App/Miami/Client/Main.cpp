@@ -39,6 +39,10 @@ bool ParseCommandLineArguments (int argc, char **argv, CommandLineArguments &out
 
 bool SetupLogging (const CommandLineArguments &arguments);
 
+void PrintMessageIndices ();
+
+bool InputAndSendRequest (uint64_t nextQueryId, Miami::Hotline::SocketSession *session);
+
 int main (int argc, char **argv)
 {
     signal (SIGINT, ProcessSignal);
@@ -64,6 +68,7 @@ int main (int argc, char **argv)
         Exit (ExitCode::CLIENT_CONNECT_ERROR);
     }
 
+    PrintMessageIndices ();
     std::thread socketIOThread (
         [&clientContext] ()
         {
@@ -79,10 +84,11 @@ int main (int argc, char **argv)
                 }
 
                 bool anySessions = clientContext->Client ().CoreContext ().HasAnySession ();
-                std::atomic_fetch_and(&running, anySessions);
+                std::atomic_fetch_and (&running, anySessions);
             }
         });
 
+    uint64_t nextQueryId = 0;
     while (running)
     {
         std::cout << "Press q to quit, c to input command and m to view pending messages." << std::endl;
@@ -96,13 +102,12 @@ int main (int argc, char **argv)
                 break;
 
             case 'c':
-            {
-                // TODO: Implement.
-                Miami::App::Messaging::ConduitVoidActionRequest request {5};
-                // TODO: A bit adhok, write is "safe" only because there is current write implementation with mutex.
-                request.Write (Miami::App::Messaging::Message::GET_TABLE_IDS_REQUEST,
-                               clientContext->Client ().GetSession ());
-            }
+                if (InputAndSendRequest (nextQueryId, clientContext->Client ().GetSession()))
+                {
+                    std::cout << "This query will have id " << nextQueryId << "." << std::endl;
+                    ++nextQueryId;
+                }
+
                 break;
 
             case 'm':
@@ -154,5 +159,357 @@ bool SetupLogging (const CommandLineArguments &arguments)
     {
         printf ("Unable to setup log output to file %s!", arguments.logFileName_.c_str ());
         return false;
+    }
+}
+
+void PrintMessageIndices ()
+{
+    std::cout << "Supported messages:" << std::endl;
+    auto message = static_cast <Miami::App::Messaging::Message> (0u);
+
+    while (message <= Miami::App::Messaging::Message::REMOVE_TABLE_REQUEST)
+    {
+        std::cout << "  " << static_cast<uint64_t> (message) << ". " <<
+                  Miami::App::Messaging::GetMessageName (message) << std::endl;
+        message = static_cast <Miami::App::Messaging::Message> (static_cast<uint64_t> (message) + 1u);
+    }
+}
+
+bool InputAndSendRequest (uint64_t nextQueryId, Miami::Hotline::SocketSession *session)
+{
+    // TODO: Temporary method implementation, rewrite later.
+    if (!session)
+    {
+        assert (session);
+        return false;
+    }
+
+    Miami::App::Messaging::Message messageType;
+    {
+        uint64_t rawIndex = ~0;
+        std::cout << "Input message type index: ";
+        std::cin >> rawIndex;
+        messageType = static_cast <Miami::App::Messaging::Message> (rawIndex);
+    }
+
+    auto inputDataType = [] ()
+    {
+        uint64_t rawIndex = ~0;
+        std::cin >> rawIndex;
+        return static_cast <Miami::Richard::DataType> (rawIndex);
+    };
+
+    // TODO: Temporary adhok implementation.
+    auto inputTableUpdateValue = [inputDataType] ()
+    {
+        Miami::App::Messaging::ResourceId columnId;
+        std::cout << "Input column id: ";
+        std::cin >> columnId;
+
+        std::cout << "Input data type index: ";
+        Miami::Richard::DataType dataType = inputDataType ();
+        Miami::Richard::AnyDataContainer container (dataType);
+
+        std::cout << "Input value: ";
+        switch (dataType)
+        {
+            case Miami::Richard::DataType::INT8:
+            {
+                int8_t value;
+                std::cin >> value;
+                *static_cast<int8_t *> (container.GetDataStartPointer ()) = value;
+            }
+                break;
+
+            case Miami::Richard::DataType::INT16:
+            {
+                int16_t value;
+                std::cin >> value;
+                *static_cast<int16_t *> (container.GetDataStartPointer ()) = value;
+            }
+                break;
+
+            case Miami::Richard::DataType::INT32:
+            {
+                int32_t value;
+                std::cin >> value;
+                *static_cast<int32_t *> (container.GetDataStartPointer ()) = value;
+            }
+                break;
+
+            case Miami::Richard::DataType::INT64:
+            {
+                int64_t value;
+                std::cin >> value;
+                *static_cast<int64_t *> (container.GetDataStartPointer ()) = value;
+            }
+                break;
+
+            case Miami::Richard::DataType::SHORT_STRING:
+            case Miami::Richard::DataType::STRING:
+            case Miami::Richard::DataType::LONG_STRING:
+            case Miami::Richard::DataType::HUGE_STRING:
+            case Miami::Richard::DataType::BLOB_16KB:
+            {
+                std::string value;
+                std::cin >> value;
+                memcpy (&value[0], container.GetDataStartPointer (),
+                        std::min (static_cast<uint32_t>(value.size ()), Miami::Richard::GetDataTypeSize (dataType)));
+            }
+                break;
+        }
+
+        return std::make_pair (columnId, Miami::Richard::AnyDataContainer (std::move (container)));
+    };
+
+    switch (messageType)
+    {
+        case Miami::App::Messaging::Message::GET_TABLE_READ_ACCESS_REQUEST:
+        case Miami::App::Messaging::Message::GET_TABLE_WRITE_ACCESS_REQUEST:
+        case Miami::App::Messaging::Message::CLOSE_TABLE_READ_ACCESS_REQUEST:
+        case Miami::App::Messaging::Message::CLOSE_TABLE_WRITE_ACCESS_REQUEST:
+        case Miami::App::Messaging::Message::GET_TABLE_NAME_REQUEST:
+        case Miami::App::Messaging::Message::GET_COLUMNS_IDS_REQUEST:
+        case Miami::App::Messaging::Message::GET_INDICES_IDS_REQUEST:
+        {
+            Miami::App::Messaging::TableOperationRequest request {};
+
+            request.queryId_ = nextQueryId;
+            std::cout << "Input table id: ";
+            std::cin >> request.tableId_;
+
+            request.Write (messageType, session);
+            return true;
+        }
+
+        case Miami::App::Messaging::Message::CREATE_READ_CURSOR_REQUEST:
+        case Miami::App::Messaging::Message::GET_COLUMN_INFO_REQUEST:
+        case Miami::App::Messaging::Message::GET_INDEX_INFO_REQUEST:
+        case Miami::App::Messaging::Message::CREATE_EDIT_CURSOR_REQUEST:
+        case Miami::App::Messaging::Message::REMOVE_COLUMN_REQUEST:
+        case Miami::App::Messaging::Message::REMOVE_INDEX_REQUEST:
+        {
+            Miami::App::Messaging::TablePartOperationRequest request {};
+
+            request.queryId_ = nextQueryId;
+            std::cout << "Input table id: ";
+            std::cin >> request.tableId_;
+
+            std::cout << "Input target part id: ";
+            std::cin >> request.partId_;
+
+            request.Write (messageType, session);
+            return true;
+        }
+
+        case Miami::App::Messaging::Message::SET_TABLE_NAME_REQUEST:
+        {
+            Miami::App::Messaging::SetTableNameRequest request {};
+
+            request.queryId_ = nextQueryId;
+            std::cout << "Input table id: ";
+            std::cin >> request.tableId_;
+
+            std::cout << "Input new name: ";
+            std::cin >> request.newName_;
+
+            request.Write (messageType, session);
+            return true;
+        }
+
+        case Miami::App::Messaging::Message::ADD_COLUMN_REQUEST:
+        {
+            Miami::App::Messaging::AddColumnRequest request {};
+
+            request.queryId_ = nextQueryId;
+            std::cout << "Input table id: ";
+            std::cin >> request.tableId_;
+
+            std::cout << "Input column name: ";
+            std::cin >> request.name_;
+
+            std::cout << "Input column data type index: ";
+            request.dataType_ = inputDataType ();
+
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::ADD_INDEX_REQUEST:
+        {
+            Miami::App::Messaging::AddIndexRequest request {};
+
+            request.queryId_ = nextQueryId;
+            std::cout << "Input table id: ";
+            std::cin >> request.tableId_;
+
+            std::cout << "Input index name: ";
+            std::cin >> request.name_;
+
+            uint64_t baseColumnsCount;
+            std::cout << "Input base columns count: ";
+            std::cin >> baseColumnsCount;
+
+            while (baseColumnsCount--)
+            {
+                Miami::App::Messaging::ResourceId columnId;
+                std::cout << "Input column id: ";
+                std::cin >> columnId;
+                request.columns_.emplace_back (columnId);
+            }
+
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::ADD_ROW_REQUEST:
+        {
+            Miami::App::Messaging::AddRowRequest request {};
+
+            request.queryId_ = nextQueryId;
+            std::cout << "Input table id: ";
+            std::cin >> request.tableId_;
+
+            uint64_t valuesCount;
+            std::cout << "Input values count: ";
+            std::cin >> valuesCount;
+
+            while (valuesCount--)
+            {
+                request.values_.emplace_back (inputTableUpdateValue ());
+            }
+
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::CURSOR_ADVANCE_REQUEST:
+        {
+            Miami::App::Messaging::CursorAdvanceRequest request {};
+
+            request.queryId_ = nextQueryId;
+            std::cout << "Input cursor id: ";
+            std::cin >> request.cursorId_;
+
+            std::cout << "Input step: ";
+            std::cin >> request.step_;
+
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::CURSOR_GET_REQUEST:
+        {
+            Miami::App::Messaging::CursorGetRequest request {};
+
+            request.queryId_ = nextQueryId;
+            std::cout << "Input cursor id: ";
+            std::cin >> request.cursorId_;
+
+            std::cout << "Input column id: ";
+            std::cin >> request.columnId_;
+
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::CURSOR_UPDATE_REQUEST:
+        {
+            Miami::App::Messaging::CursorUpdateRequest request {};
+
+            request.queryId_ = nextQueryId;
+            std::cout << "Input cursor id: ";
+            std::cin >> request.cursorId_;
+
+            uint64_t valuesCount;
+            std::cout << "Input values count: ";
+            std::cin >> valuesCount;
+
+            while (valuesCount--)
+            {
+                request.values_.emplace_back (inputTableUpdateValue ());
+            }
+
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::CURSOR_DELETE_REQUEST:
+        {
+            Miami::App::Messaging::CursorVoidActionRequest request {};
+
+            request.queryId_ = nextQueryId;
+            std::cout << "Input cursor id: ";
+            std::cin >> request.cursorId_;
+
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::CLOSE_CURSOR_REQUEST:
+        {
+            Miami::App::Messaging::CursorVoidActionRequest request {};
+
+            request.queryId_ = nextQueryId;
+            std::cout << "Input cursor id: ";
+            std::cin >> request.cursorId_;
+
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::GET_CONDUIT_READ_ACCESS_REQUEST:
+        {
+            Miami::App::Messaging::ConduitVoidActionRequest request {};
+            request.queryId_ = nextQueryId;
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::GET_CONDUIT_WRITE_ACCESS_REQUEST:
+        {
+            Miami::App::Messaging::ConduitVoidActionRequest request {};
+            request.queryId_ = nextQueryId;
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::CLOSE_CONDUIT_READ_ACCESS_REQUEST:
+        {
+            Miami::App::Messaging::ConduitVoidActionRequest request {};
+            request.queryId_ = nextQueryId;
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::CLOSE_CONDUIT_WRITE_ACCESS_REQUEST:
+        {
+            Miami::App::Messaging::ConduitVoidActionRequest request {};
+            request.queryId_ = nextQueryId;
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::GET_TABLE_IDS_REQUEST:
+        {
+            Miami::App::Messaging::ConduitVoidActionRequest request {};
+            request.queryId_ = nextQueryId;
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::ADD_TABLE_REQUEST:
+        {
+            Miami::App::Messaging::AddTableRequest request {};
+            request.queryId_ = nextQueryId;
+
+            std::cout << "Input table name: ";
+            std::cin >> request.tableName_;
+
+            request.Write (messageType, session);
+            return true;
+        }
+        case Miami::App::Messaging::Message::REMOVE_TABLE_REQUEST:
+        {
+            Miami::App::Messaging::TableOperationRequest request {};
+            request.queryId_ = nextQueryId;
+
+            std::cout << "Input table id: ";
+            std::cin >> request.tableId_;
+
+            request.Write (messageType, session);
+            return true;
+        }
+
+        default:
+            std::cout << "Given message type is not a request type!" << std::endl;
+            return false;
     }
 }

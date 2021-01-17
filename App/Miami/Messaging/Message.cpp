@@ -117,13 +117,13 @@ void WritePODMessage (Type *value, Message messageType, Hotline::SocketSession *
     VALIDATE_CHUNK_SIZE(sizeof (std::size_t));                            \
     fieldPath.resize (*reinterpret_cast<const std::size_t *>(&chunk[0]));
 
-#define REQUEST_POD_VECTOR_CONTENT(fieldPath)                        \
-    static_assert (std::is_pod_v<decltype (fieldPath)::value_type>); \
-    return {fieldPath.size (), true}
+#define REQUEST_POD_VECTOR_CONTENT(fieldPath)                                    \
+    static_assert (std::is_pod_v<decltype (fieldPath)::value_type>);             \
+    return {fieldPath.size () * sizeof (decltype (fieldPath)::value_type), true}
 
 #define READ_POD_VECTOR_CONTENT(fieldPath)                           \
-    static_assert (std::is_pod_v<decltype (fieldPath)::value_type>); \
-    VALIDATE_CHUNK_SIZE(sizeof (fieldPath.size ()));                 \
+    static_assert (std::is_pod_v<decltype (fieldPath)::value_type>);                      \
+    VALIDATE_CHUNK_SIZE((fieldPath.size () * sizeof (decltype (fieldPath)::value_type))); \
     memcpy (&fieldPath[0], &chunk[0], sizeof (fieldPath.size ()));
 
 #define REQUEST_AND_READ_POD_VECTOR(fieldPath, sizeReaderStep, contentReaderStep, skipLabelName) \
@@ -208,6 +208,123 @@ void WritePODMessage (Type *value, Message messageType, Hotline::SocketSession *
     allReadLabelName: ;
 
 #define CATCH_UNKNOWN_STEP default: return {0, false}
+}
+
+const char *GetMessageName (Message message)
+{
+    switch (message)
+    {
+        case Message::VOID_OPERATION_RESULT_RESPONSE:
+            return "VOID_OPERATION_RESULT_RESPONSE";
+
+        case Message::CREATE_OPERATION_RESULT_RESPONSE:
+            return "CREATE_OPERATION_RESULT_RESPONSE";
+
+        case Message::RESOURCE_IDS_RESPONSE:
+            return "RESOURCE_IDS_RESPONSE";
+
+        case Message::GET_TABLE_READ_ACCESS_REQUEST:
+            return "GET_TABLE_READ_ACCESS_REQUEST";
+
+        case Message::GET_TABLE_WRITE_ACCESS_REQUEST:
+            return "GET_TABLE_WRITE_ACCESS_REQUEST";
+
+        case Message::CLOSE_TABLE_READ_ACCESS_REQUEST:
+            return "CLOSE_TABLE_READ_ACCESS_REQUEST";
+
+        case Message::CLOSE_TABLE_WRITE_ACCESS_REQUEST:
+            return "CLOSE_TABLE_WRITE_ACCESS_REQUEST";
+
+        case Message::GET_TABLE_NAME_REQUEST:
+            return "GET_TABLE_NAME_REQUEST";
+
+        case Message::GET_TABLE_NAME_RESPONSE:
+            return "GET_TABLE_NAME_RESPONSE";
+
+        case Message::CREATE_READ_CURSOR_REQUEST:
+            return "CREATE_READ_CURSOR_REQUEST";
+
+        case Message::GET_COLUMNS_IDS_REQUEST:
+            return "GET_COLUMNS_IDS_REQUEST";
+
+        case Message::GET_COLUMN_INFO_REQUEST:
+            return "GET_COLUMN_INFO_REQUEST";
+
+        case Message::GET_COLUMN_INFO_RESPONSE:
+            return "GET_COLUMN_INFO_RESPONSE";
+
+        case Message::GET_INDICES_IDS_REQUEST:
+            return "GET_INDICES_IDS_REQUEST";
+
+        case Message::GET_INDEX_INFO_REQUEST:
+            return "GET_INDEX_INFO_REQUEST";
+
+        case Message::GET_INDEX_INFO_RESPONSE:
+            return "GET_INDEX_INFO_RESPONSE";
+
+        case Message::SET_TABLE_NAME_REQUEST:
+            return "SET_TABLE_NAME_REQUEST";
+
+        case Message::CREATE_EDIT_CURSOR_REQUEST:
+            return "CREATE_EDIT_CURSOR_REQUEST";
+
+        case Message::ADD_COLUMN_REQUEST:
+            return "ADD_COLUMN_REQUEST";
+
+        case Message::REMOVE_COLUMN_REQUEST:
+            return "REMOVE_COLUMN_REQUEST";
+
+        case Message::ADD_INDEX_REQUEST:
+            return "ADD_INDEX_REQUEST";
+
+        case Message::REMOVE_INDEX_REQUEST:
+            return "REMOVE_INDEX_REQUEST";
+
+        case Message::ADD_ROW_REQUEST:
+            return "ADD_ROW_REQUEST";
+
+        case Message::CURSOR_ADVANCE_REQUEST:
+            return "CURSOR_ADVANCE_REQUEST";
+
+        case Message::CURSOR_GET_REQUEST:
+            return "CURSOR_GET_REQUEST";
+
+        case Message::CURSOR_GET_RESPONSE:
+            return "CURSOR_GET_RESPONSE";
+
+        case Message::CURSOR_UPDATE_REQUEST:
+            return "CURSOR_UPDATE_REQUEST";
+
+        case Message::CURSOR_DELETE_REQUEST:
+            return "CURSOR_DELETE_REQUEST";
+
+        case Message::CLOSE_CURSOR_REQUEST:
+            return "CLOSE_CURSOR_REQUEST";
+
+        case Message::GET_CONDUIT_READ_ACCESS_REQUEST:
+            return "GET_CONDUIT_READ_ACCESS_REQUEST";
+
+        case Message::GET_CONDUIT_WRITE_ACCESS_REQUEST:
+            return "GET_CONDUIT_WRITE_ACCESS_REQUEST";
+
+        case Message::CLOSE_CONDUIT_READ_ACCESS_REQUEST:
+            return "CLOSE_CONDUIT_READ_ACCESS_REQUEST";
+
+        case Message::CLOSE_CONDUIT_WRITE_ACCESS_REQUEST:
+            return "CLOSE_CONDUIT_WRITE_ACCESS_REQUEST";
+
+        case Message::GET_TABLE_IDS_REQUEST:
+            return "GET_TABLE_IDS_REQUEST";
+
+        case Message::ADD_TABLE_REQUEST:
+            return "ADD_TABLE_REQUEST";
+
+        case Message::REMOVE_TABLE_REQUEST:
+            return "REMOVE_TABLE_REQUEST";
+    }
+
+    assert (false);
+    return "UNKNOWN";
 }
 
 Hotline::MessageParser VoidOperationResultResponse::CreateParserWithCallback (

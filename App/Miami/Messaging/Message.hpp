@@ -86,6 +86,8 @@ enum class Message
     REMOVE_TABLE_REQUEST, // -> VOID_OPERATION_RESULT_RESPONSE
 };
 
+const char *GetMessageName (Message message);
+
 enum class OperationResult
 {
     OK = 0,

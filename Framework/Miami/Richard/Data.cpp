@@ -85,6 +85,10 @@ AnyDataContainer::AnyDataContainer (DataType dataType)
         case DataType::BLOB_16KB:
             container_ = DataContainer <DataType::BLOB_16KB> ();
             break;
+
+        default:
+            assert (false);
+            // TODO: Log error.
     }
 }
 
