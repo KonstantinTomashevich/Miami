@@ -13,11 +13,11 @@ thread_local std::vector <Hotline::MemoryRegion> sharedRegionsMap;
 thread_local std::vector <Richard::DataType> dataTypesCache;
 
 template <typename Type, std::enable_if_t <std::is_pod_v <Type>, bool> = true>
-void WritePODMessage (Type *value, Hotline::SocketSession *session)
+void WritePODMessage (Type *value, Message messageType, Hotline::SocketSession *session)
 {
     assert (value);
     assert (session);
-    session->Write ({value, sizeof (Type)});
+    session->WriteMessage (static_cast <Hotline::MessageTypeId> (messageType), {value, sizeof (Type)});
 }
 
 #define START_WRITE_MAPPING          \
@@ -64,7 +64,8 @@ void WritePODMessage (Type *value, Hotline::SocketSession *session)
         MAP_ONE_TABLE_VALUE_INTERNAL(columnValuePair.second);                                                 \
     }
 
-#define END_WRITE_MAPPING session->Write (Utils::sharedRegionsMap)
+#define END_WRITE_MAPPING                                                                                \
+    session->WriteMessage (static_cast <Hotline::MessageTypeId> (messageType), Utils::sharedRegionsMap)
 
 #define VALIDATE_CHUNK_SIZE(expectedSize) \
     if (expectedSize != chunk.size ())    \
@@ -73,28 +74,29 @@ void WritePODMessage (Type *value, Hotline::SocketSession *session)
         return {0, false};                \
     }
 
-#define CREATE_POD_PARSER(MessageType)                                                                          \
-    [finishCallback (std::move (callback)), firstCall (true)] (                                                 \
-        const std::vector <uint8_t> &chunk, Hotline::SocketSession *session) -> Hotline::MessageParserStatus    \
-    {                                                                                                           \
-        static_assert (std::is_pod_v <MessageType>);                                                            \
-        if (firstCall)                                                                                          \
-        {                                                                                                       \
-            return {sizeof (MessageType), true};                                                                \
-        }                                                                                                       \
-        else                                                                                                    \
-        {                                                                                                       \
-            VALIDATE_CHUNK_SIZE(sizeof (MessageType));                                                          \
-            MessageType result;                                                                                 \
-            memcpy (&result, &chunk[0], sizeof (MessageType));                                                  \
-                                                                                                                \
-            if (finishCallback)                                                                                 \
-            {                                                                                                   \
-                finishCallback (result, session);                                                               \
-            }                                                                                                   \
-                                                                                                                \
-            return {0, true};                                                                                   \
-        }                                                                                                       \
+#define CREATE_POD_PARSER(MessageType)                                                                               \
+    [finishCallback (std::move (callback)), firstCall (true)] (                                                      \
+        const std::vector <uint8_t> &chunk, Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus \
+    {                                                                                                                \
+        static_assert (std::is_pod_v <MessageType>);                                                                 \
+        if (firstCall)                                                                                               \
+        {                                                                                                            \
+            firstCall = false;                                                                                       \
+            return {sizeof (MessageType), true};                                                                     \
+        }                                                                                                            \
+        else                                                                                                         \
+        {                                                                                                            \
+            VALIDATE_CHUNK_SIZE(sizeof (MessageType));                                                               \
+            MessageType result;                                                                                      \
+            memcpy (&result, &chunk[0], sizeof (MessageType));                                                       \
+                                                                                                                     \
+            if (finishCallback)                                                                                      \
+            {                                                                                                        \
+                finishCallback (result, session);                                                                    \
+            }                                                                                                        \
+                                                                                                                     \
+            return {0, true};                                                                                        \
+        }                                                                                                            \
     }
 
 #define NEXT_STEP step = static_cast <Step> (static_cast <uint8_t> (step) + 1u)
@@ -215,9 +217,9 @@ Hotline::MessageParser VoidOperationResultResponse::CreateParserWithCallback (
     return CREATE_POD_PARSER(VoidOperationResultResponse);
 }
 
-void VoidOperationResultResponse::Write (Hotline::SocketSession *session) const
+void VoidOperationResultResponse::Write (Message messageType, Hotline::SocketSession *session) const
 {
-    Utils::WritePODMessage (this, session);
+    Utils::WritePODMessage (this, messageType, session);
 }
 
 Hotline::MessageParser TableOperationRequest::CreateParserWithCallback (
@@ -227,9 +229,9 @@ Hotline::MessageParser TableOperationRequest::CreateParserWithCallback (
     return CREATE_POD_PARSER(TableOperationRequest);
 }
 
-void TableOperationRequest::Write (Hotline::SocketSession *session) const
+void TableOperationRequest::Write (Message messageType, Hotline::SocketSession *session) const
 {
-    Utils::WritePODMessage (this, session);
+    Utils::WritePODMessage (this, messageType, session);
 }
 
 Hotline::MessageParser GetTableNameResponse::CreateParserWithCallback (
@@ -274,7 +276,7 @@ Hotline::MessageParser GetTableNameResponse::CreateParserWithCallback (
     };
 }
 
-void GetTableNameResponse::Write (Hotline::SocketSession *session) const
+void GetTableNameResponse::Write (Message messageType, Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
@@ -289,9 +291,9 @@ Hotline::MessageParser TablePartOperationRequest::CreateParserWithCallback (
     return CREATE_POD_PARSER(TablePartOperationRequest);
 }
 
-void TablePartOperationRequest::Write (Hotline::SocketSession *session) const
+void TablePartOperationRequest::Write (Message messageType, Hotline::SocketSession *session) const
 {
-    Utils::WritePODMessage (this, session);
+    Utils::WritePODMessage (this, messageType, session);
 }
 
 Hotline::MessageParser CreateOperationResultResponse::CreateParserWithCallback (
@@ -301,9 +303,9 @@ Hotline::MessageParser CreateOperationResultResponse::CreateParserWithCallback (
     return CREATE_POD_PARSER(CreateOperationResultResponse);
 }
 
-void CreateOperationResultResponse::Write (Hotline::SocketSession *session) const
+void CreateOperationResultResponse::Write (Message messageType, Hotline::SocketSession *session) const
 {
-    Utils::WritePODMessage (this, session);
+    Utils::WritePODMessage (this, messageType, session);
 }
 
 Hotline::MessageParser
@@ -348,7 +350,7 @@ IdsResponse::CreateParserWithCallback (std::function <void (IdsResponse &, Hotli
     };
 }
 
-void IdsResponse::Write (Hotline::SocketSession *session) const
+void IdsResponse::Write (Message messageType, Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_VECTOR_WRITE(ids_);
@@ -403,7 +405,7 @@ Hotline::MessageParser ColumnInfoResponse::CreateParserWithCallback (
     };
 }
 
-void ColumnInfoResponse::Write (Hotline::SocketSession *session) const
+void ColumnInfoResponse::Write (Message messageType, Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
@@ -459,7 +461,7 @@ Hotline::MessageParser IndexInfoResponse::CreateParserWithCallback (
     };
 }
 
-void IndexInfoResponse::Write (Hotline::SocketSession *session) const
+void IndexInfoResponse::Write (Message messageType, Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
@@ -516,7 +518,7 @@ Hotline::MessageParser SetTableNameRequest::CreateParserWithCallback (
     };
 }
 
-void SetTableNameRequest::Write (Hotline::SocketSession *session) const
+void SetTableNameRequest::Write (Message messageType, Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
@@ -579,7 +581,7 @@ Hotline::MessageParser AddColumnRequest::CreateParserWithCallback (
     };
 }
 
-void AddColumnRequest::Write (Hotline::SocketSession *session) const
+void AddColumnRequest::Write (Message messageType, Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
@@ -642,7 +644,7 @@ Hotline::MessageParser AddIndexRequest::CreateParserWithCallback (
     };
 }
 
-void AddIndexRequest::Write (Hotline::SocketSession *session) const
+void AddIndexRequest::Write (Message messageType, Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
@@ -700,7 +702,7 @@ AddRowRequest::CreateParserWithCallback (std::function <void (AddRowRequest &, H
     };
 }
 
-void AddRowRequest::Write (Hotline::SocketSession *session) const
+void AddRowRequest::Write (Message messageType, Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
@@ -716,9 +718,9 @@ Hotline::MessageParser CursorAdvanceRequest::CreateParserWithCallback (
     return CREATE_POD_PARSER(CursorAdvanceRequest);
 }
 
-void CursorAdvanceRequest::Write (Hotline::SocketSession *session) const
+void CursorAdvanceRequest::Write (Message messageType, Hotline::SocketSession *session) const
 {
-    Utils::WritePODMessage (this, session);
+    Utils::WritePODMessage (this, messageType, session);
 }
 
 Hotline::MessageParser CursorGetRequest::CreateParserWithCallback (
@@ -728,9 +730,9 @@ Hotline::MessageParser CursorGetRequest::CreateParserWithCallback (
     return CREATE_POD_PARSER(CursorGetRequest);
 }
 
-void CursorGetRequest::Write (Hotline::SocketSession *session) const
+void CursorGetRequest::Write (Message messageType, Hotline::SocketSession *session) const
 {
-    Utils::WritePODMessage (this, session);
+    Utils::WritePODMessage (this, messageType, session);
 }
 
 Hotline::MessageParser CursorGetResponse::CreateParserWithCallback (
@@ -777,7 +779,7 @@ Hotline::MessageParser CursorGetResponse::CreateParserWithCallback (
     };
 }
 
-void CursorGetResponse::Write (Hotline::SocketSession *session) const
+void CursorGetResponse::Write (Message messageType, Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
@@ -839,7 +841,7 @@ Hotline::MessageParser CursorUpdateRequest::CreateParserWithCallback (
     };
 }
 
-void CursorUpdateRequest::Write (Hotline::SocketSession *session) const
+void CursorUpdateRequest::Write (Message messageType, Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);
@@ -855,9 +857,9 @@ Hotline::MessageParser CursorVoidActionRequest::CreateParserWithCallback (
     return CREATE_POD_PARSER(CursorVoidActionRequest);
 }
 
-void CursorVoidActionRequest::Write (Hotline::SocketSession *session) const
+void CursorVoidActionRequest::Write (Message messageType, Hotline::SocketSession *session) const
 {
-    Utils::WritePODMessage (this, session);
+    Utils::WritePODMessage (this, messageType, session);
 }
 
 Hotline::MessageParser ConduitVoidActionRequest::CreateParserWithCallback (
@@ -867,9 +869,9 @@ Hotline::MessageParser ConduitVoidActionRequest::CreateParserWithCallback (
     return CREATE_POD_PARSER(ConduitVoidActionRequest);
 }
 
-void ConduitVoidActionRequest::Write (Hotline::SocketSession *session) const
+void ConduitVoidActionRequest::Write (Message messageType, Hotline::SocketSession *session) const
 {
-    Utils::WritePODMessage (this, session);
+    Utils::WritePODMessage (this, messageType, session);
 }
 
 Hotline::MessageParser AddTableRequest::CreateParserWithCallback (
@@ -914,7 +916,7 @@ Hotline::MessageParser AddTableRequest::CreateParserWithCallback (
     };
 }
 
-void AddTableRequest::Write (Hotline::SocketSession *session) const
+void AddTableRequest::Write (Message messageType, Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
     MAP_POD_WRITE(queryId_);

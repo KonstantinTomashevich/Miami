@@ -2,6 +2,42 @@
 
 namespace Miami::Richard
 {
+const char *GetDataTypeName (DataType dataType)
+{
+    switch (dataType)
+    {
+        case DataType::INT8:
+            return "int8";
+
+        case DataType::INT16:
+            return "int16";
+
+        case DataType::INT32:
+            return "int32";
+
+        case DataType::INT64:
+            return "int64";
+
+        case DataType::SHORT_STRING:
+            return "short_string";
+
+        case DataType::STRING:
+            return "string";
+
+        case DataType::LONG_STRING:
+            return "long_string";
+
+        case DataType::HUGE_STRING:
+            return "huge_string";
+
+        case DataType::BLOB_16KB:
+            return "blob_16kb";
+    }
+
+    assert (false);
+    return "UNKNOWN";
+}
+
 AnyDataContainer::AnyDataContainer ()
     : container_ ()
 {

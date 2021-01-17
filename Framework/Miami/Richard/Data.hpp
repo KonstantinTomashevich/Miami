@@ -25,6 +25,8 @@ enum class DataType
     BLOB_16KB
 };
 
+const char *GetDataTypeName (DataType dataType);
+
 constexpr uint32_t GetDataTypeSize (DataType dataType)
 {
     switch (dataType)

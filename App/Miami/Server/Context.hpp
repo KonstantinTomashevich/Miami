@@ -2,6 +2,8 @@
 
 #include <atomic>
 
+#include <Miami/Annotations.hpp>
+
 #include <Miami/Disco/Context.hpp>
 
 #include <Miami/Richard/Conduit.hpp>
@@ -21,7 +23,7 @@ class Context final
 public:
     explicit Context (uint32_t workerThreads);
 
-    ResultCode Execute (uint16_t port);
+    free_call ResultCode Execute (uint16_t port);
 
     void RequestAbort ();
 

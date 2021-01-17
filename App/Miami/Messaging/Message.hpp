@@ -100,7 +100,7 @@ struct VoidOperationResultResponse
     QueryId queryId_;
     OperationResult result_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 static_assert (std::is_pod_v <VoidOperationResultResponse>);
@@ -122,7 +122,7 @@ struct TableOperationRequest
     QueryId queryId_;
     ResourceId tableId_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 static_assert (std::is_pod_v <TableOperationRequest>);
@@ -136,7 +136,7 @@ struct GetTableNameResponse
     QueryId queryId_;
     std::string tableName_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For messages:
@@ -155,7 +155,7 @@ struct TablePartOperationRequest
     ResourceId tableId_;
     ResourceId partId_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 
@@ -168,7 +168,7 @@ struct CreateOperationResultResponse
     QueryId queryId_;
     ResourceId resourceId_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 static_assert (std::is_pod_v <CreateOperationResultResponse>);
@@ -182,7 +182,7 @@ struct IdsResponse
     QueryId queryId_;
     std::vector <ResourceId> ids_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For message GET_COLUMN_INFO_RESPONSE.
@@ -195,7 +195,7 @@ struct ColumnInfoResponse
     Richard::DataType dataType_;
     std::string name_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For message GET_INDEX_INFO_RESPONSE.
@@ -208,7 +208,7 @@ struct IndexInfoResponse
     std::string name_;
     std::vector <ResourceId> columns_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For message SET_TABLE_NAME_REQUEST.
@@ -221,7 +221,7 @@ struct SetTableNameRequest
     ResourceId tableId_;
     std::string newName_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For message ADD_COLUMN_REQUEST.
@@ -235,7 +235,7 @@ struct AddColumnRequest
     Richard::DataType dataType_;
     std::string name_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For message ADD_INDEX_REQUEST.
@@ -249,7 +249,7 @@ struct AddIndexRequest
     std::string name_;
     std::vector <ResourceId> columns_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For message ADD_ROW_REQUEST.
@@ -262,7 +262,7 @@ struct AddRowRequest
     ResourceId tableId_;
     std::vector <std::pair <ResourceId, Richard::AnyDataContainer>> values_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For message CURSOR_ADVANCE_REQUEST.
@@ -275,7 +275,7 @@ struct CursorAdvanceRequest
     ResourceId cursorId_;
     uint64_t step_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For message CURSOR_GET_REQUEST.
@@ -288,7 +288,7 @@ struct CursorGetRequest
     ResourceId cursorId_;
     ResourceId columnId_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For message CURSOR_GET_RESPONSE.
@@ -300,7 +300,7 @@ struct CursorGetResponse
     QueryId queryId_;
     Richard::AnyDataContainer value_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For message ADD_ROW_REQUEST.
@@ -313,7 +313,7 @@ struct CursorUpdateRequest
     ResourceId cursorId_;
     std::vector <std::pair <ResourceId, Richard::AnyDataContainer>> values_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For messages CURSOR_DELETE_REQUEST and CLOSE_CURSOR_REQUEST.
@@ -325,7 +325,7 @@ struct CursorVoidActionRequest
     QueryId queryId_;
     ResourceId cursorId_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For messages:
@@ -341,7 +341,7 @@ struct ConduitVoidActionRequest
 
     QueryId queryId_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 /// For message ADD_TABLE_REQUEST.
@@ -353,7 +353,7 @@ struct AddTableRequest
     QueryId queryId_;
     std::string tableName_;
 
-    void Write (Hotline::SocketSession *session) const;
+    void Write (Message messageType, Hotline::SocketSession *session) const;
 };
 
 // TODO: Add message, that allows to capture multiple read/write guards.

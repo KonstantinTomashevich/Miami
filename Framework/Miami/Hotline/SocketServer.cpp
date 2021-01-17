@@ -43,6 +43,15 @@ ResultCode SocketServer::Start (uint16_t port, bool useIPv6)
         return ResultCode::SOCKET_IO_ERROR;
     }
 
+    acceptor_.listen(boost::asio::socket_base::max_listen_connections, error);
+    if (error)
+    {
+        Evan::Logger::Get ().Log (
+            Evan::LogLevel::ERROR,
+            "Unable to set acceptor to list mode due to io error: " + error.message () + ".");
+        return ResultCode::SOCKET_IO_ERROR;
+    }
+
     ContinueAccepting ();
     return ResultCode::OK;
 }

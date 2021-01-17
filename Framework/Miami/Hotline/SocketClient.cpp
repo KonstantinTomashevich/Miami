@@ -66,6 +66,19 @@ ResultCode SocketClient::Start (const std::string &host, const std::string &serv
     return result;
 }
 
+SocketSession *SocketClient::GetSession ()
+{
+    // TODO: A bit adhok solution.
+    if (socketContext_.HasAnySession ())
+    {
+        return socketContext_.sessions_[0].get ();
+    }
+    else
+    {
+        return nullptr;
+    }
+}
+
 SocketContext &SocketClient::CoreContext ()
 {
     return socketContext_;

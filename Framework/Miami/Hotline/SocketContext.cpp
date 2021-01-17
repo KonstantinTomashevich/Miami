@@ -12,8 +12,7 @@ namespace Miami::Hotline
 SocketContext::SocketContext ()
     : sessions_ (),
       parserFactories_ (),
-      asioContext_ (),
-      callbacksExecuted_ (0)
+      asioContext_ ()
 {
 }
 
@@ -25,24 +24,19 @@ bool SocketContext::HasAnySession () const
 ResultCode SocketContext::DoStep ()
 {
     boost::system::error_code error;
-    std::size_t callbacksExecuted = asioContext_.poll (error);
-    callbacksExecuted_ += callbacksExecuted;
+    asioContext_.poll (error);
+    auto iterator = sessions_.begin ();
 
-    if (callbacksExecuted_ >= CALLBACKS_PER_CLEANUP_CYCLE)
+    while (iterator != sessions_.end ())
     {
-        callbacksExecuted_ = 0;
-        auto iterator = sessions_.begin ();
-
-        while (iterator != sessions_.end ())
+        if ((**iterator).valid_)
         {
-            if ((**iterator).valid_)
-            {
-                ++iterator;
-            }
-            else
-            {
-                sessions_.erase (iterator);
-            }
+            (**iterator).Flush ();
+            ++iterator;
+        }
+        else
+        {
+            iterator = sessions_.erase (iterator);
         }
     }
 

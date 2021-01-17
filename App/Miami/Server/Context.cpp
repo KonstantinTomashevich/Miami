@@ -60,7 +60,7 @@ void Context::RegisterMessages ()
 {
     // TODO: For now, only stubs are here.
     // TODO: Handle register failures in release mode.
-    Hotline::ResultCode result = Hotline::ResultCode::OK;
+    Hotline::ResultCode result;
 
     result = socketServer_.CoreContext ().RegisterFactory (
         static_cast <Hotline::MessageTypeId> (Messaging::Message::GET_TABLE_READ_ACCESS_REQUEST),
@@ -77,7 +77,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -97,7 +97,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -117,7 +117,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -137,7 +137,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -157,7 +157,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -177,7 +177,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -197,7 +197,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -217,7 +217,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -237,7 +237,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -257,7 +257,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -277,7 +277,27 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                });
+        });
+
+    assert (result == Hotline::ResultCode::OK);
+    result = socketServer_.CoreContext ().RegisterFactory (
+        static_cast <Hotline::MessageTypeId> (Messaging::Message::CREATE_EDIT_CURSOR_REQUEST),
+        [this] () -> Hotline::MessageParser
+        {
+            return Messaging::TablePartOperationRequest::CreateParserWithCallback (
+                [this] (const Messaging::TablePartOperationRequest &message, Hotline::SocketSession *session)
+                {
+                    Evan::Logger::Get ().Log (
+                        Evan::LogLevel::VERBOSE,
+                        "Received table " + std::to_string (message.tableId_) +
+                        " edit cursor creation from index " + std::to_string (message.partId_) +
+                        " request from session " + std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
+
+                    Messaging::VoidOperationResultResponse response
+                        {message.queryId_, Messaging::OperationResult::OK};
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -293,12 +313,12 @@ void Context::RegisterMessages ()
                         Evan::LogLevel::VERBOSE,
                         "Received table " + std::to_string (message.tableId_) +
                         " add column \"" + message.name_ + "\": " +
-                        std::to_string (static_cast<uint32_t>(message.dataType_)) +
+                        Richard::GetDataTypeName (message.dataType_) +
                         " request from session " + std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -319,7 +339,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -340,7 +360,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -361,7 +381,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -382,7 +402,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -402,7 +422,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -422,7 +442,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -443,7 +463,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -463,7 +483,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -483,7 +503,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -502,7 +522,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -521,7 +541,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -540,7 +560,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -559,7 +579,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -578,7 +598,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -597,7 +617,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 
@@ -617,7 +637,7 @@ void Context::RegisterMessages ()
 
                     Messaging::VoidOperationResultResponse response
                         {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (session);
+                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
                 });
         });
 

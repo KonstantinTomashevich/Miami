@@ -17,6 +17,8 @@ public:
 
     free_call ResultCode Start (const std::string &host, const std::string &service);
 
+    free_call SocketSession *GetSession ();
+
     SocketContext &CoreContext ();
 
     const SocketContext &CoreContext () const;

@@ -33,6 +33,12 @@ public:
 
     ResultCode Write (const std::vector <MemoryRegion> &regions);
 
+    // TODO: Temporary adhok.
+    ResultCode WriteMessage (MessageTypeId type, const MemoryRegion &dataRegion);
+
+    // TODO: Temporary adhok.
+    ResultCode WriteMessage (MessageTypeId type, const std::vector <MemoryRegion> &dataRegions);
+
     Session &Data ();
 
 private:
