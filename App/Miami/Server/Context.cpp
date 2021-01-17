@@ -2,6 +2,8 @@
 #define NOGDI
 
 #include <App/Miami/Server/Context.hpp>
+#include <App/Miami/Server/Processing.hpp>
+
 #include <App/Miami/Messaging/Message.hpp>
 
 #include <Miami/Evan/Logger.hpp>
@@ -75,9 +77,8 @@ void Context::RegisterMessages ()
                         " read access request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessGetTableReadAccessRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -95,9 +96,8 @@ void Context::RegisterMessages ()
                         " write access request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessGetTableWriteAccessRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -115,9 +115,8 @@ void Context::RegisterMessages ()
                         " read access close request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessCloseTableReadAccessRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -135,9 +134,8 @@ void Context::RegisterMessages ()
                         " write access close request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessCloseTableWriteAccessRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -155,9 +153,8 @@ void Context::RegisterMessages ()
                         " name request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessGetTableNameRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -175,9 +172,8 @@ void Context::RegisterMessages ()
                         " read cursor creation from index " + std::to_string (message.partId_) +
                         " request from session " + std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessCreateReadCursorRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -195,9 +191,8 @@ void Context::RegisterMessages ()
                         " columns ids request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessGetColumnsIdsRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -215,9 +210,8 @@ void Context::RegisterMessages ()
                         " column " + std::to_string (message.partId_) +
                         " info request from session " + std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessGetColumnInfoRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -235,9 +229,8 @@ void Context::RegisterMessages ()
                         " indices ids request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessGetIndicesIdsRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -255,9 +248,8 @@ void Context::RegisterMessages ()
                         " index " + std::to_string (message.partId_) +
                         " info request from session " + std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessGetIndexInfoRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -275,9 +267,8 @@ void Context::RegisterMessages ()
                         " name change to \"" + message.newName_ +
                         "\" request from session " + std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessSetTableNameRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -295,9 +286,8 @@ void Context::RegisterMessages ()
                         " edit cursor creation from index " + std::to_string (message.partId_) +
                         " request from session " + std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessCreateEditCursorRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -316,9 +306,8 @@ void Context::RegisterMessages ()
                         Richard::GetDataTypeName (message.dataType_) +
                         " request from session " + std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessAddColumnRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -337,9 +326,8 @@ void Context::RegisterMessages ()
                         " remove request from session " + std::to_string (reinterpret_cast <ptrdiff_t> (session)) +
                         ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessRemoveColumnRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -358,9 +346,8 @@ void Context::RegisterMessages ()
                         " add index \"" + message.name_ +
                         "\" request from session " + std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessAddIndexRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -379,9 +366,8 @@ void Context::RegisterMessages ()
                         " remove request from session " + std::to_string (reinterpret_cast <ptrdiff_t> (session)) +
                         ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessRemoveIndexRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -400,9 +386,8 @@ void Context::RegisterMessages ()
                         " add row request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessAddRowRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -420,9 +405,8 @@ void Context::RegisterMessages ()
                         " advance by " + std::to_string (message.step_) + " request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessCursorAdvanceRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -440,9 +424,8 @@ void Context::RegisterMessages ()
                         " get column " + std::to_string (message.columnId_) + " request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessCursorGetRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -461,9 +444,8 @@ void Context::RegisterMessages ()
                         " update request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessCursorUpdateRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -481,9 +463,8 @@ void Context::RegisterMessages ()
                         " delete current request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessCursorDeleteRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -501,9 +482,8 @@ void Context::RegisterMessages ()
                         " close request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessCloseCursorRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -520,9 +500,8 @@ void Context::RegisterMessages ()
                         "Received conduit read access request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessGetConduitReadAccessRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -539,9 +518,8 @@ void Context::RegisterMessages ()
                         "Received conduit write access request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessGetConduitWriteAccessRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -558,9 +536,8 @@ void Context::RegisterMessages ()
                         "Received conduit read access close request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessCloseConduitReadAccessRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -577,9 +554,8 @@ void Context::RegisterMessages ()
                         "Received conduit write access close request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessCloseConduitWriteAccessRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -596,9 +572,8 @@ void Context::RegisterMessages ()
                         "Received conduit table ids request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessGetTableIdsRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -615,9 +590,8 @@ void Context::RegisterMessages ()
                         "Received conduit add table \"" + message.tableName_ +
                         "\" request from session " + std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessAddTableRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 
@@ -635,9 +609,8 @@ void Context::RegisterMessages ()
                         " remove request from session " +
                         std::to_string (reinterpret_cast <ptrdiff_t> (session)) + ".");
 
-                    Messaging::VoidOperationResultResponse response
-                        {message.queryId_, Messaging::OperationResult::OK};
-                    response.Write (Messaging::Message::VOID_OPERATION_RESULT_RESPONSE, session);
+                    ProcessRemoveTableRequest (
+                        {&multithreadingContext_, &databaseConduit_, session}, message);
                 });
         });
 

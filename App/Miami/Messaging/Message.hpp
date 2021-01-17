@@ -275,7 +275,7 @@ struct CursorAdvanceRequest
 
     QueryId queryId_;
     ResourceId cursorId_;
-    uint64_t step_;
+    int64_t step_;
 
     void Write (Message messageType, Hotline::SocketSession *session) const;
 };
