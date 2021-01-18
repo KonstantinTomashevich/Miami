@@ -336,9 +336,6 @@ const char *GetOperationResultName (OperationResult operationResult)
         case OperationResult::OK:
             return "OK";
 
-        case OperationResult::TIME_OUT:
-            return "TIME_OUT";
-
         case OperationResult::INTERNAL_ERROR:
             return "INTERNAL_ERROR";
 
@@ -365,6 +362,12 @@ const char *GetOperationResultName (OperationResult operationResult)
 
         case OperationResult::TABLE_WRITE_ACCESS_REQUIRED:
             return "TABLE_WRITE_ACCESS_REQUIRED";
+
+        case OperationResult::CURSOR_WITH_GIVEN_ID_NOT_FOUND:
+            return "CURSOR_WITH_GIVEN_ID_NOT_FOUND";
+
+        case OperationResult::NULL_COLUMN_VALUE:
+            return "NULL_COLUMN_VALUE";
 
         case OperationResult::CURSOR_ADVANCE_STOPPED_AT_BEGIN:
             return "CURSOR_ADVANCE_STOPPED_AT_BEGIN";
@@ -410,6 +413,9 @@ const char *GetOperationResultName (OperationResult operationResult)
 
         case OperationResult::NEW_COLUMN_VALUE_TYPE_MISMATCH:
             return "NEW_COLUMN_VALUE_TYPE_MISMATCH";
+
+        case OperationResult::DUPLICATE_COLUMN_VALUES_IN_INSERTION_REQUEST:
+            return "DUPLICATE_COLUMN_VALUES_IN_INSERTION_REQUEST";
     }
 
     assert (false);
@@ -964,8 +970,7 @@ Hotline::MessageParser CursorGetResponse::CreateParserWithCallback (
         step (Step::START),
 
         // TODO: Adhok, because AnyDataContainer is not copyable.
-        result (std::make_shared <CursorGetResponse> (
-            CursorGetResponse {0, Richard::AnyDataContainer {}}))]
+        result (std::make_shared <CursorGetResponse> ())]
 
         (const std::vector <uint8_t> &chunk,
          Hotline::SocketSession *session) mutable -> Hotline::MessageParserStatus

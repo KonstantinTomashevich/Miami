@@ -91,7 +91,6 @@ const char *GetMessageName (Message message);
 enum class OperationResult
 {
     OK = 0,
-    TIME_OUT,
     INTERNAL_ERROR,
 
     ALREADY_HAS_WRITE_ACCESS,
@@ -104,6 +103,8 @@ enum class OperationResult
     TABLE_READ_ACCESS_REQUIRED,
     TABLE_READ_OR_WRITE_ACCESS_REQUIRED,
     TABLE_WRITE_ACCESS_REQUIRED,
+    CURSOR_WITH_GIVEN_ID_NOT_FOUND,
+    NULL_COLUMN_VALUE,
 
     CURSOR_ADVANCE_STOPPED_AT_BEGIN,
     CURSOR_ADVANCE_STOPPED_AT_END,

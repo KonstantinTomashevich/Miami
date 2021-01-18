@@ -217,6 +217,7 @@ struct DataContainer <dataType, false>
     }
 };
 
+// TODO: For now, all data types are PODs. Add static asserts, so there always will be only POD types.
 class AnyDataContainer final
 {
 public:
@@ -247,11 +248,21 @@ public:
     {
     }
 
+    // TODO: Explicitly delete copy constructor, because data container copy operation could be expensive.
+    //       Can not delete now, because it breaks shitty serialization implementation in client.
+    AnyDataContainer (const AnyDataContainer &other);
+
     DataType GetType () const;
 
     Container &Get ();
 
     const Container &Get () const;
+
+    void *GetDataStartPointer ();
+
+    const void *GetDataStartPointer () const;
+
+    void CopyFrom (const AnyDataContainer &other);
 
     bool operator == (const AnyDataContainer &another) const;
 
@@ -265,11 +276,11 @@ public:
 
     bool operator >= (const AnyDataContainer &another) const;
 
-    void *GetDataStartPointer ();
-
-    const void *GetDataStartPointer () const;
+    AnyDataContainer &operator = (AnyDataContainer &&another) noexcept;
 
 private:
+    void ConstructContainerFromType (DataType dataType);
+
     Container container_;
 };
 }

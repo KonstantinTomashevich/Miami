@@ -240,6 +240,82 @@ bool EnsureTableReadOrWriteAccess (const ProcessingContext &context, const Sessi
         return true;
     }
 }
+
+template <typename Cursor>
+struct TransitCursorData
+{
+    Cursor *cursor_;
+    Richard::AnyDataId sourceTableId_ = 0u;
+};
+
+TransitCursorData <Richard::TableEditCursor> GetEditCursor (
+    const ProcessingContext &context, const SessionExtension *extension, ResourceId cursorId)
+{
+    if (!extension)
+    {
+        return {nullptr, 0u};
+    }
+
+    auto iterator = extension->editCursors_.find (cursorId);
+    if (iterator == extension->editCursors_.end ())
+    {
+        return {nullptr, 0u};
+    }
+    else
+    {
+        return {iterator->second.cursor_.get (), iterator->second.sourceTableId_};
+    }
+}
+
+TransitCursorData <Richard::TableReadCursor> GetReadOrEditCursor (
+    const ProcessingContext &context, const SessionExtension *extension, ResourceId cursorId)
+{
+    if (!extension)
+    {
+        return {nullptr, 0u};
+    }
+
+    auto iterator = extension->readCursors_.find (cursorId);
+    if (iterator == extension->readCursors_.end ())
+    {
+        TransitCursorData <Richard::TableEditCursor> editCursor = GetEditCursor (context, extension, cursorId);
+        if (editCursor.cursor_)
+        {
+            // It's safe to downcast edit cursor pointer to read cursor pointer.
+            return {editCursor.cursor_, editCursor.sourceTableId_};
+        }
+        else
+        {
+            return {nullptr, 0u};
+        }
+    }
+    else
+    {
+        return {iterator->second.cursor_.get (), iterator->second.sourceTableId_};
+    }
+}
+
+bool UnwrapRowValues (
+    const ProcessingContext &context, QueryId queryId,
+    std::vector <std::pair <ResourceId, Richard::AnyDataContainer>> &values,
+    std::unordered_map <Richard::AnyDataId, Richard::AnyDataContainer> &valuesMap)
+{
+    for (auto &idValuePair : values)
+    {
+        if (valuesMap.count (idValuePair.first))
+        {
+            SendVoidResult (
+                context, queryId, Messaging::OperationResult::DUPLICATE_COLUMN_VALUES_IN_INSERTION_REQUEST);
+            return false;
+        }
+        else
+        {
+            valuesMap[idValuePair.first] = std::move (idValuePair.second);
+        }
+    }
+
+    return true;
+}
 }
 
 // TODO: Use ifs with pointer asserts? Like not only assertb (table), but also with if (table) for steel stability.
@@ -292,10 +368,6 @@ void ProcessGetTableReadAccessRequest (const ProcessingContext &context,
                                         {guards[1], table, false};
                                     SendVoidResult (context, request.queryId_, OperationResult::OK);
                                 }
-                            },
-                            [context, request] ()
-                            {
-                                SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
                             });
                     }
                 }
@@ -350,10 +422,6 @@ void ProcessGetTableWriteAccessRequest (const ProcessingContext &context,
                                         {guards[1], table, true};
                                     SendVoidResult (context, request.queryId_, OperationResult::OK);
                                 }
-                            },
-                            [context, request] ()
-                            {
-                                SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
                             });
                     }
                 }
@@ -489,7 +557,11 @@ void ProcessCreateReadCursorRequest (const ProcessingContext &context,
                     {
                         assert (cursor);
                         Richard::AnyDataId cursorId = extension->nextCursorId_++;
-                        auto emplaceResult = extension->readCursors_.emplace (cursorId, cursor);
+                        SessionExtension::CursorData <Richard::TableReadCursor> cursorData {};
+                        cursorData.cursor_.reset (cursor);
+                        cursorData.sourceTableId_ = request.tableId_;
+
+                        auto emplaceResult = extension->readCursors_.emplace (cursorId, std::move (cursorData));
                         // TODO: Better check later.
                         assert (emplaceResult.second);
 
@@ -714,7 +786,11 @@ void ProcessCreateEditCursorRequest (const ProcessingContext &context,
                     {
                         assert (cursor);
                         Richard::AnyDataId cursorId = extension->nextCursorId_++;
-                        auto emplaceResult = extension->editCursors_.emplace (cursorId, cursor);
+                        SessionExtension::CursorData <Richard::TableEditCursor> cursorData {};
+                        cursorData.cursor_.reset (cursor);
+                        cursorData.sourceTableId_ = request.tableId_;
+
+                        auto emplaceResult = extension->editCursors_.emplace (cursorId, std::move (cursorData));
                         // TODO: Better check later.
                         assert (emplaceResult.second);
 
@@ -874,20 +950,11 @@ void ProcessAddRowRequest (const ProcessingContext &context, AddRowRequest &mess
                     assert (tableAccess.table_);
                     std::unordered_map <Richard::AnyDataId, Richard::AnyDataContainer> valuesMap;
 
-                    for (auto &idValuePair : request->values_)
+                    if (UnwrapRowValues (context, request->queryId_, request->values_, valuesMap))
                     {
-                        auto emplaceResult = valuesMap.emplace (idValuePair.first, std::move (idValuePair.second));
-                        if (!emplaceResult.second)
-                        {
-                            SendVoidResult (
-                                context, request->queryId_,
-                                Messaging::OperationResult::DUPLICATE_COLUMN_VALUES_IN_INSERTION_REQUEST);
-                            return;
-                        }
+                        Richard::ResultCode result = tableAccess.table_->InsertRow (tableAccess.guard_, valuesMap);
+                        SendVoidResult (context, request->queryId_, MapDatabaseResultToOperationResult (result));
                     }
-
-                    Richard::ResultCode result = tableAccess.table_->InsertRow (tableAccess.guard_, valuesMap);
-                    SendVoidResult (context, request->queryId_, MapDatabaseResultToOperationResult (result));
                 }
             }
         });
@@ -896,46 +963,215 @@ void ProcessAddRowRequest (const ProcessingContext &context, AddRowRequest &mess
 void ProcessCursorAdvanceRequest (const ProcessingContext &context,
                                   const CursorAdvanceRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        // Request is captured using shared pointer because std::function requires all captures to be copyable,
+        // but it's impossible to copy this request because of Richard::AnyDataContainer.
+        [context, request (message)] (auto guard) mutable
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                TransitCursorData <Richard::TableReadCursor> cursorData =
+                    GetReadOrEditCursor (context, extension, request.cursorId_);
+
+                if (!cursorData.cursor_)
+                {
+                    SendVoidResult (context, request.queryId_,
+                                    Messaging::OperationResult::CURSOR_WITH_GIVEN_ID_NOT_FOUND);
+                    return;
+                }
+
+                PureTableAccess tableAccess {};
+                if (EnsureTableReadOrWriteAccess (
+                    context, extension, request.queryId_, cursorData.sourceTableId_, tableAccess))
+                {
+                    Richard::ResultCode result = cursorData.cursor_->Advance (tableAccess.guard_, request.step_);
+                    SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                }
+            }
+        });
 }
 
 void ProcessCursorGetRequest (const ProcessingContext &context,
                               const CursorGetRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        // Request is captured using shared pointer because std::function requires all captures to be copyable,
+        // but it's impossible to copy this request because of Richard::AnyDataContainer.
+        [context, request (message)] (auto guard) mutable
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                TransitCursorData <Richard::TableReadCursor> cursorData =
+                    GetReadOrEditCursor (context, extension, request.cursorId_);
+
+                if (!cursorData.cursor_)
+                {
+                    SendVoidResult (context, request.queryId_,
+                                    Messaging::OperationResult::CURSOR_WITH_GIVEN_ID_NOT_FOUND);
+                    return;
+                }
+
+                PureTableAccess tableAccess {};
+                if (EnsureTableReadOrWriteAccess (
+                    context, extension, request.queryId_, cursorData.sourceTableId_, tableAccess))
+                {
+                    CursorGetResponse response {};
+                    response.queryId_ = request.queryId_;
+
+                    const Richard::AnyDataContainer *container = nullptr;
+                    Richard::ResultCode result = cursorData.cursor_->Get (
+                        tableAccess.guard_, request.columnId_, container);
+
+                    if (result == Richard::ResultCode::OK)
+                    {
+                        if (container)
+                        {
+                            response.value_.CopyFrom (*container);
+                            response.Write (Messaging::Message::CURSOR_GET_RESPONSE, context.session_);
+                        }
+                        else
+                        {
+                            SendVoidResult (context, request.queryId_,
+                                            Messaging::OperationResult::NULL_COLUMN_VALUE);
+                        }
+                    }
+                    else
+                    {
+                        SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                    }
+                }
+            }
+        });
 }
 
 void ProcessCursorUpdateRequest (const ProcessingContext &context,
-                                 const CursorUpdateRequest &message)
+                                 CursorUpdateRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        // Request is captured using shared pointer because std::function requires all captures to be copyable,
+        // but it's impossible to copy this request because of Richard::AnyDataContainer.
+        [context, request (std::make_shared <CursorUpdateRequest> (std::move (message)))] (auto guard) mutable
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request->queryId_, guard, extension))
+            {
+                TransitCursorData <Richard::TableEditCursor> cursorData =
+                    GetEditCursor (context, extension, request->cursorId_);
+
+                if (!cursorData.cursor_)
+                {
+                    SendVoidResult (context, request->queryId_,
+                                    Messaging::OperationResult::CURSOR_WITH_GIVEN_ID_NOT_FOUND);
+                    return;
+                }
+
+                PureTableAccess tableAccess {};
+                if (EnsureTableWriteAccess (
+                    context, extension, request->queryId_, cursorData.sourceTableId_, tableAccess))
+                {
+                    std::unordered_map <Richard::AnyDataId, Richard::AnyDataContainer> valuesMap;
+                    if (UnwrapRowValues (context, request->queryId_, request->values_, valuesMap))
+                    {
+                        Richard::ResultCode result = cursorData.cursor_->Update (tableAccess.guard_, valuesMap);
+                        SendVoidResult (context, request->queryId_, MapDatabaseResultToOperationResult (result));
+                    }
+                }
+            }
+        });
 }
 
 void ProcessCursorDeleteRequest (const ProcessingContext &context,
                                  const CursorVoidActionRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        // Request is captured using shared pointer because std::function requires all captures to be copyable,
+        // but it's impossible to copy this request because of Richard::AnyDataContainer.
+        [context, request (message)] (auto guard) mutable
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                TransitCursorData <Richard::TableEditCursor> cursorData =
+                    GetEditCursor (context, extension, request.cursorId_);
+
+                if (!cursorData.cursor_)
+                {
+                    SendVoidResult (context, request.queryId_,
+                                    Messaging::OperationResult::CURSOR_WITH_GIVEN_ID_NOT_FOUND);
+                    return;
+                }
+
+                PureTableAccess tableAccess {};
+                if (EnsureTableWriteAccess (
+                    context, extension, request.queryId_, cursorData.sourceTableId_, tableAccess))
+                {
+                    Richard::ResultCode result = cursorData.cursor_->DeleteCurrent (tableAccess.guard_);
+                    SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                }
+            }
+        });
 }
 
 void ProcessCloseCursorRequest (const ProcessingContext &context,
                                 const CursorVoidActionRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Write (),
+        // Request is captured using shared pointer because std::function requires all captures to be copyable,
+        // but it's impossible to copy this request because of Richard::AnyDataContainer.
+        [context, request (message)] (auto guard) mutable
+        {
+            SessionExtension *extension = nullptr;
+            if (ExtractSessionExtension (context, request.queryId_, guard, extension))
+            {
+                assert (extension);
+                {
+                    auto iterator = extension->readCursors_.find (request.cursorId_);
+                    if (iterator != extension->readCursors_.end ())
+                    {
+                        // TODO: Check for collision in other places too.
+                        assert (extension->editCursors_.find (request.cursorId_) == extension->editCursors_.end ());
+                        extension->readCursors_.erase (iterator);
+                        SendVoidResult (context, request.queryId_, Messaging::OperationResult::OK);
+                        return;
+                    }
+                }
+
+                {
+                    auto iterator = extension->editCursors_.find (request.cursorId_);
+                    if (iterator != extension->editCursors_.end ())
+                    {
+                        extension->editCursors_.erase (iterator);
+                        SendVoidResult (context, request.queryId_, Messaging::OperationResult::OK);
+                        return;
+                    }
+                }
+
+                SendVoidResult (context, request.queryId_,
+                                Messaging::OperationResult::CURSOR_WITH_GIVEN_ID_NOT_FOUND);
+            }
+        });
 }
 
 void ProcessGetConduitReadAccessRequest (const ProcessingContext &context,
@@ -972,10 +1208,6 @@ void ProcessGetConduitReadAccessRequest (const ProcessingContext &context,
                                 extension->conduitReadGuard_ = guards[1];
                                 SendVoidResult (context, request.queryId_, OperationResult::OK);
                             }
-                        },
-                        [context, request] ()
-                        {
-                            SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
                         });
                 }
                 else
@@ -1020,10 +1252,6 @@ void ProcessGetConduitWriteAccessRequest (const ProcessingContext &context,
                                 extension->conduitWriteGuard_ = guards[1];
                                 SendVoidResult (context, request.queryId_, OperationResult::OK);
                             }
-                        },
-                        [context, request] ()
-                        {
-                            SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
                         });
                 }
                 else

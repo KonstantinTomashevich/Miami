@@ -47,6 +47,95 @@ AnyDataContainer::AnyDataContainer ()
 AnyDataContainer::AnyDataContainer (DataType dataType)
     : container_ ()
 {
+    ConstructContainerFromType (dataType);
+}
+
+AnyDataContainer::AnyDataContainer (const AnyDataContainer &other)
+    : container_ ()
+{
+    CopyFrom (other);
+}
+
+DataType AnyDataContainer::GetType () const
+{
+    return static_cast<DataType>(container_.index ());
+}
+
+AnyDataContainer::Container &AnyDataContainer::Get ()
+{
+    return container_;
+}
+
+const AnyDataContainer::Container &AnyDataContainer::Get () const
+{
+    return container_;
+}
+
+void *AnyDataContainer::GetDataStartPointer ()
+{
+    return const_cast<void *>(const_cast<const AnyDataContainer *>(this)->GetDataStartPointer ());
+}
+
+const void *AnyDataContainer::GetDataStartPointer () const
+{
+    return std::visit ([] (const auto &value) -> const void *
+                       {
+                           return static_cast <const void *>(value.GetData ());
+                       }, container_);
+}
+
+void AnyDataContainer::CopyFrom (const AnyDataContainer &other)
+{
+    ConstructContainerFromType (other.GetType ());
+    if (GetDataStartPointer () && other.GetDataStartPointer ())
+    {
+        memcpy (GetDataStartPointer (), other.GetDataStartPointer (), GetDataTypeSize (GetType ()));
+    }
+    else
+    {
+        // TODO: Add logging.
+        assert (false);
+    }
+}
+
+bool AnyDataContainer::operator == (const AnyDataContainer &another) const
+{
+    return container_ == another.container_;
+}
+
+bool AnyDataContainer::operator != (const AnyDataContainer &another) const
+{
+    return !(another == *this);
+}
+
+bool AnyDataContainer::operator < (const AnyDataContainer &another) const
+{
+    return container_ < another.container_;
+}
+
+bool AnyDataContainer::operator > (const AnyDataContainer &another) const
+{
+    return another < *this;
+}
+
+bool AnyDataContainer::operator <= (const AnyDataContainer &another) const
+{
+    return !(another < *this);
+}
+
+bool AnyDataContainer::operator >= (const AnyDataContainer &another) const
+{
+    return !(*this < another);
+}
+
+AnyDataContainer &AnyDataContainer::operator = (AnyDataContainer &&another) noexcept
+{
+    container_.swap (another.container_);
+    return *this;
+}
+
+void AnyDataContainer::ConstructContainerFromType (DataType dataType)
+{
     // TODO: Temporary adhok stub. There should be better solution.
     switch (dataType)
     {
@@ -90,63 +179,5 @@ AnyDataContainer::AnyDataContainer (DataType dataType)
             assert (false);
             // TODO: Log error.
     }
-}
-
-DataType AnyDataContainer::GetType () const
-{
-    return static_cast<DataType>(container_.index ());
-}
-
-AnyDataContainer::Container &AnyDataContainer::Get ()
-{
-    return container_;
-}
-
-const AnyDataContainer::Container &AnyDataContainer::Get () const
-{
-    return container_;
-}
-
-bool AnyDataContainer::operator == (const AnyDataContainer &another) const
-{
-    return container_ == another.container_;
-}
-
-bool AnyDataContainer::operator != (const AnyDataContainer &another) const
-{
-    return !(another == *this);
-}
-
-bool AnyDataContainer::operator < (const AnyDataContainer &another) const
-{
-    return container_ < another.container_;
-}
-
-bool AnyDataContainer::operator > (const AnyDataContainer &another) const
-{
-    return another < *this;
-}
-
-bool AnyDataContainer::operator <= (const AnyDataContainer &another) const
-{
-    return !(another < *this);
-}
-
-bool AnyDataContainer::operator >= (const AnyDataContainer &another) const
-{
-    return !(*this < another);
-}
-
-void *AnyDataContainer::GetDataStartPointer ()
-{
-    return const_cast<void *>(const_cast<const AnyDataContainer *>(this)->GetDataStartPointer ());
-}
-
-const void *AnyDataContainer::GetDataStartPointer () const
-{
-    return std::visit ([] (const auto &value) -> const void *
-                       {
-                           return static_cast <const void *>(value.GetData ());
-                       }, container_);
 }
 }

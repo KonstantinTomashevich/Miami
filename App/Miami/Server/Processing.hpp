@@ -33,13 +33,20 @@ struct SessionExtension final
         bool isWriteAccess_ = false;
     };
 
+    template <typename Cursor>
+    struct CursorData
+    {
+        std::unique_ptr <Cursor> cursor_ = nullptr;
+        Richard::AnyDataId sourceTableId_ = 0u;
+    };
+
     std::shared_ptr <Disco::SafeLockGuard> conduitReadGuard_ = nullptr;
     std::shared_ptr <Disco::SafeLockGuard> conduitWriteGuard_ = nullptr;
 
     std::unordered_map <Richard::AnyDataId, TableAccess> tableAccesses_ {};
     Richard::AnyDataId nextCursorId_ = 0;
-    std::unordered_map <Richard::AnyDataId, std::unique_ptr <Richard::TableReadCursor>> readCursors_ {};
-    std::unordered_map <Richard::AnyDataId, std::unique_ptr <Richard::TableEditCursor>> editCursors_ {};
+    std::unordered_map <Richard::AnyDataId, CursorData <Richard::TableReadCursor>> readCursors_ {};
+    std::unordered_map <Richard::AnyDataId, CursorData <Richard::TableEditCursor>> editCursors_ {};
 };
 
 void ProcessGetTableReadAccessRequest (const ProcessingContext &context,
@@ -100,7 +107,7 @@ void ProcessCursorGetRequest (const ProcessingContext &context,
                               const Messaging::CursorGetRequest &message);
 
 void ProcessCursorUpdateRequest (const ProcessingContext &context,
-                                 const Messaging::CursorUpdateRequest &message);
+                                 Messaging::CursorUpdateRequest &message);
 
 void ProcessCursorDeleteRequest (const ProcessingContext &context,
                                  const Messaging::CursorVoidActionRequest &message);

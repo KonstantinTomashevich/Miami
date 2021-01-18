@@ -201,6 +201,7 @@ void Context::RegisterMessages ()
                             while (valuePointer != end && *valuePointer)
                             {
                                 output += *valuePointer;
+                                ++valuePointer;
                             }
 
                             break;

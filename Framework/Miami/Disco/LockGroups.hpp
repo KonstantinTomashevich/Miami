@@ -11,7 +11,7 @@
 namespace Miami::Disco
 {
 // TODO: Rename lock groups to await groups? Sounds better, I think.
-// TODO: TimedOneLockGroup.
+// TODO: TimedOneLockGroup. Also, cancel lambda for timed lock group must contain cancel reason.
 class OneLockGroup
 {
 public:
@@ -45,7 +45,7 @@ private:
     friend class AnyLockGroupPointer;
 };
 
-// TODO: TimedMultipleLockGroup.
+// TODO: TimedMultipleLockGroup. Also, cancel lambda for timed multiple lock group must contain cancel reason.
 class MultipleLockGroup
 {
 public:
@@ -53,6 +53,8 @@ public:
 
     // TODO: See remark about pointer type in OneLockGroup::NextLambda;
     using NextLambda = std::function <void (std::vector <std::shared_ptr <SafeLockGuard>>)>;
+
+    // TODO: Should contain cancel reason (for example, lock X destruction).
     using CancelLambda = std::function <void ()>;
 
     MultipleLockGroup (std::vector <AnyLockPointer> locks, NextLambda next,

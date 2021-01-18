@@ -416,7 +416,7 @@ void Context::RegisterMessages ()
         [this] () -> Hotline::MessageParser
         {
             return Messaging::CursorGetRequest::CreateParserWithCallback (
-                [this] (const Messaging::CursorGetRequest &message, Hotline::SocketSession *session)
+                [this] (Messaging::CursorGetRequest &message, Hotline::SocketSession *session)
                 {
                     Evan::Logger::Get ().Log (
                         Evan::LogLevel::VERBOSE,
@@ -435,7 +435,7 @@ void Context::RegisterMessages ()
         [this] () -> Hotline::MessageParser
         {
             return Messaging::CursorUpdateRequest::CreateParserWithCallback (
-                [this] (const Messaging::CursorUpdateRequest &message, Hotline::SocketSession *session)
+                [this] (Messaging::CursorUpdateRequest &message, Hotline::SocketSession *session)
                 {
                     // TODO: Print more info?
                     Evan::Logger::Get ().Log (
