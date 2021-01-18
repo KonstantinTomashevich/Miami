@@ -43,6 +43,15 @@ ResultCode SocketServer::Start (uint16_t port, bool useIPv6)
         return ResultCode::SOCKET_IO_ERROR;
     }
 
+    acceptor_.listen(boost::asio::socket_base::max_listen_connections, error);
+    if (error)
+    {
+        Evan::Logger::Get ().Log (
+            Evan::LogLevel::ERROR,
+            "Unable to set acceptor to list mode due to io error: " + error.message () + ".");
+        return ResultCode::SOCKET_IO_ERROR;
+    }
+
     ContinueAccepting ();
     return ResultCode::OK;
 }
@@ -60,11 +69,11 @@ const SocketContext &SocketServer::CoreContext () const
 void SocketServer::ContinueAccepting ()
 {
     assert (acceptor_.is_open ());
-    auto newSocketSession = std::make_unique <SocketSession> (multithreadingContext_, &socketContext_);
+    auto *newSocketSession = new SocketSession (multithreadingContext_, &socketContext_);
 
     acceptor_.async_accept (
-        SocketContext::RetrieveSessionSocket (newSocketSession.get ()),
-        [this, session (std::move (newSocketSession))] (const boost::system::error_code &error) mutable
+        SocketContext::RetrieveSessionSocket (newSocketSession),
+        [this, newSocketSession] (const boost::system::error_code &error) mutable
         {
             if (error)
             {
@@ -72,10 +81,11 @@ void SocketServer::ContinueAccepting ()
                     Evan::LogLevel::ERROR,
                     "Caught socket io error in accept callback: " + error.message () +
                     ". Shutting down server!");
+                delete newSocketSession;
             }
             else
             {
-                ResultCode registrationResult = socketContext_.AddSession (session);
+                ResultCode registrationResult = socketContext_.AddSession (newSocketSession);
                 if (registrationResult == ResultCode::OK)
                 {
                     ContinueAccepting ();
@@ -87,6 +97,7 @@ void SocketServer::ContinueAccepting ()
                         "Caught not-ok result code " +
                         std::to_string (static_cast<uint64_t>(registrationResult)) +
                         " during session registration process. Shutting down server!");
+                    delete newSocketSession;
                 }
             }
         });

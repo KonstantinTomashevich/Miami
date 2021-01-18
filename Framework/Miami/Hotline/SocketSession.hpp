@@ -20,7 +20,7 @@ class SocketContext;
 
 struct MemoryRegion
 {
-    void *start_;
+    const void *start_;
     uint64_t length_;
 };
 
@@ -32,6 +32,12 @@ public:
     ResultCode Write (const MemoryRegion &region);
 
     ResultCode Write (const std::vector <MemoryRegion> &regions);
+
+    // TODO: Temporary adhok.
+    ResultCode WriteMessage (MessageTypeId type, const MemoryRegion &dataRegion);
+
+    // TODO: Temporary adhok.
+    ResultCode WriteMessage (MessageTypeId type, const std::vector <MemoryRegion> &dataRegions);
 
     Session &Data ();
 

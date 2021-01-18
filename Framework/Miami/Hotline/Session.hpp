@@ -26,6 +26,8 @@ public:
     template <typename Entry>
     free_call ResultCode GetEntryForWrite (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard, Entry *&output);
 
+    Disco::ReadWriteGuard &ReadWriteGuard ();
+
 private:
     free_call bool CheckReadOrWriteGuard (const std::shared_ptr <Disco::SafeLockGuard> &readOrWriteGuard) const;
 
@@ -72,6 +74,7 @@ ResultCode Session::GetEntryForWrite (const std::shared_ptr <Disco::SafeLockGuar
         auto result = entries_.emplace (Entry::TYPE_ID, std::make_shared <Entry> ());
         if (result.second)
         {
+            output = reinterpret_cast <Entry *> (result.first->second.get ());
             return ResultCode::OK;
         }
         else

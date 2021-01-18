@@ -25,6 +25,8 @@ enum class DataType
     BLOB_16KB
 };
 
+const char *GetDataTypeName (DataType dataType);
+
 constexpr uint32_t GetDataTypeSize (DataType dataType)
 {
     switch (dataType)
@@ -103,7 +105,7 @@ struct DataContainer;
 template <DataType dataType>
 struct DataContainer <dataType, true>
 {
-    typename DataTypeToCxxType <dataType>::Type value_;
+    typename DataTypeToCxxType <dataType>::Type value_ {};
 
     bool operator == (const DataContainer <dataType, true> &another) const
     {
@@ -134,12 +136,23 @@ struct DataContainer <dataType, true>
     {
         return !(*this < another);
     }
+
+    typename DataTypeToCxxType <dataType>::Type *GetData ()
+    {
+        return &value_;
+    }
+
+    const typename DataTypeToCxxType <dataType>::Type *GetData () const
+    {
+        return &value_;
+    }
 };
 
 template <DataType dataType>
 struct DataContainer <dataType, false>
 {
-    std::unique_ptr <typename DataTypeToCxxType <dataType>::Type> value_;
+    std::unique_ptr <typename DataTypeToCxxType <dataType>::Type>
+        value_ {new typename DataTypeToCxxType <dataType>::Type ()};
 
     bool operator == (const DataContainer <dataType, false> &another) const
     {
@@ -192,8 +205,19 @@ struct DataContainer <dataType, false>
     {
         return !(*this < another);
     }
+
+    typename DataTypeToCxxType <dataType>::Type *GetData ()
+    {
+        return value_.get ();
+    }
+
+    const typename DataTypeToCxxType <dataType>::Type *GetData () const
+    {
+        return value_.get ();
+    }
 };
 
+// TODO: For now, all data types are PODs. Add static asserts, so there always will be only POD types.
 class AnyDataContainer final
 {
 public:
@@ -208,17 +232,37 @@ public:
         DataContainer <DataType::HUGE_STRING>,
         DataContainer <DataType::BLOB_16KB>>;
 
+    AnyDataContainer ();
+
+    explicit AnyDataContainer (DataType dataType);
+
     template <DataType dataType>
-    explicit AnyDataContainer (moved_in typename DataTypeToCxxType <dataType>::Type &value)
+    explicit AnyDataContainer (moved_in DataContainer <dataType> &value)
         : container_ (std::move (value))
     {
     }
+
+    template <DataType dataType>
+    explicit AnyDataContainer (const DataContainer <dataType> &value)
+        : container_ (value)
+    {
+    }
+
+    // TODO: Explicitly delete copy constructor, because data container copy operation could be expensive.
+    //       Can not delete now, because it breaks shitty serialization implementation in client.
+    AnyDataContainer (const AnyDataContainer &other);
 
     DataType GetType () const;
 
     Container &Get ();
 
     const Container &Get () const;
+
+    void *GetDataStartPointer ();
+
+    const void *GetDataStartPointer () const;
+
+    void CopyFrom (const AnyDataContainer &other);
 
     bool operator == (const AnyDataContainer &another) const;
 
@@ -232,7 +276,11 @@ public:
 
     bool operator >= (const AnyDataContainer &another) const;
 
+    AnyDataContainer &operator = (AnyDataContainer &&another) noexcept;
+
 private:
+    void ConstructContainerFromType (DataType dataType);
+
     Container container_;
 };
 }

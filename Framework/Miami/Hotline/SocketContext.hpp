@@ -17,8 +17,6 @@ namespace Miami::Hotline
 class SocketContext final
 {
 public:
-    static constexpr uint32_t CALLBACKS_PER_CLEANUP_CYCLE = 1000;
-
     SocketContext ();
 
     free_call bool HasAnySession () const;
@@ -32,14 +30,13 @@ private:
 
     free_call static boost::asio::ip::tcp::socket &RetrieveSessionSocket (SocketSession *session);
 
-    free_call ResultCode AddSession (moved_in std::unique_ptr <SocketSession> &session);
+    free_call ResultCode AddSession (moved_in SocketSession *session);
 
     std::vector <std::unique_ptr <SocketSession>> sessions_;
 
     // TODO: Use flat hash map.
     std::unordered_map <MessageTypeId, MessageParserFactory> parserFactories_;
     boost::asio::io_context asioContext_;
-    std::size_t callbacksExecuted_;
 
     friend class SocketSession;
 

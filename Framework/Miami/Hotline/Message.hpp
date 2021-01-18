@@ -18,6 +18,7 @@ struct MessageParserStatus
     bool valid_;
 };
 
+// TODO: Switch to coroutines later?
 using MessageParser = std::function <MessageParserStatus (const std::vector <uint8_t> &, SocketSession *)>;
 
 using MessageParserFactory = std::function <MessageParser ()>;

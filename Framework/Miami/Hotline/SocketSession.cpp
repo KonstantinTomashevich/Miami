@@ -63,6 +63,59 @@ ResultCode SocketSession::Write (const std::vector <MemoryRegion> &regions)
     return ResultCode::OK;
 }
 
+ResultCode SocketSession::WriteMessage (MessageTypeId type, const MemoryRegion &dataRegion)
+{
+    if (!valid_)
+    {
+        return ResultCode::INVALID_SOCKET_SESSION;
+    }
+
+    // TODO: Rewrite better, without duplication. In a hurry now. :(
+    std::unique_lock <std::mutex> lock (outputBufferGuard_);
+    ResultCode result = WriteInternal ({&type, sizeof (type)});
+
+    if (result != ResultCode::OK)
+    {
+        return result;
+    }
+
+    result = WriteInternal (dataRegion);
+    if (result != ResultCode::OK)
+    {
+        return result;
+    }
+
+    return ResultCode::OK;
+}
+
+ResultCode SocketSession::WriteMessage (MessageTypeId type, const std::vector <MemoryRegion> &dataRegions)
+{
+    if (!valid_)
+    {
+        return ResultCode::INVALID_SOCKET_SESSION;
+    }
+
+    // TODO: Rewrite better, without duplication. In a hurry now. :(
+    std::unique_lock <std::mutex> lock (outputBufferGuard_);
+    ResultCode result = WriteInternal ({&type, sizeof (type)});
+
+    if (result != ResultCode::OK)
+    {
+        return result;
+    }
+
+    for (const MemoryRegion &region : dataRegions)
+    {
+        result = WriteInternal (region);
+        if (result != ResultCode::OK)
+        {
+            return result;
+        }
+    }
+
+    return ResultCode::OK;
+}
+
 Session &SocketSession::Data ()
 {
     return session_;
@@ -88,7 +141,13 @@ ResultCode SocketSession::Start ()
 
 ResultCode SocketSession::Flush ()
 {
-    if (!valid_ || outputBuffer_.empty ())
+    if (!valid_)
+    {
+        return ResultCode::OK;
+    }
+
+    std::unique_lock <std::mutex> lock (outputBufferGuard_);
+    if (outputBuffer_.empty ())
     {
         return ResultCode::OK;
     }
@@ -221,6 +280,7 @@ void SocketSession::InvokeParser ()
     {
         if (status.nextChunkSize_ == 0)
         {
+            currentMessageParser_ = nullptr;
             WaitForNextMessage ();
         }
         else

@@ -216,13 +216,13 @@ ResultCode Index::OnDelete (AnyDataId deletedRowId)
     // We don't lock cursor management guard here, because deletion callback could only be called by
     // thread with table write access. I hope, this uncheckable from here invariant won't be broken.
 
-    auto iterator = std::lower_bound (order_.begin (), order_.end (), deletedRowId,
-                                      [this] (AnyDataId firstRow, AnyDataId secondRow)
-                                      {
-                                          return IsRowLess (firstRow, secondRow);
-                                      });
+    // TODO: Plain id search through vector is quite bad, but there is no other way with current update implementation
+    //       (delete CHANGED row and then reinsert). Other way of doing this is value based search, but it could
+    //       be quite long too (because values are not always small) and it requires serious change in how we handle
+    //       update. Think about this again later.
+    auto iterator = std::find (order_.begin (), order_.end (), deletedRowId);
 
-    if (iterator == order_.end () || *iterator != deletedRowId)
+    if (iterator == order_.end ())
     {
         Evan::Logger::Get ().Log (
             Evan::LogLevel::ERROR,
@@ -363,7 +363,6 @@ bool Index::IsRowLess (AnyDataId firstRow, AnyDataId secondRow) const
         }
     }
 
-    // If rows are equal, compare them by ids.
-    return firstRow < secondRow;
+    return false;
 }
 }

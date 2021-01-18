@@ -474,7 +474,7 @@ void Table::ApplyValidRowChanges (AnyDataId rowId, Table::Row &row)
     {
         try
         {
-            columns_.at (columnDataPair.first).values_.at (rowId) = std::move (columnDataPair.second);
+            columns_.at (columnDataPair.first).values_[rowId] = std::move (columnDataPair.second);
         }
         catch (std::out_of_range &exception)
         {
@@ -511,8 +511,14 @@ ResultCode Table::GetColumnValue (AnyDataId columnId, AnyDataId rowId, const Any
     return ResultCode::OK;
 }
 
-ResultCode Table::UpdateRow (AnyDataId rowId, Table::Row &changedValues)
+ResultCode Table::UpdateRow (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard,
+                             AnyDataId rowId, Table::Row &changedValues)
 {
+    if (!CheckWriteGuard (writeGuard))
+    {
+        return ResultCode::INVARIANTS_VIOLATED;
+    }
+
     auto rowIterator = rows_.find (rowId);
     if (rowIterator == rows_.end ())
     {
@@ -567,8 +573,13 @@ ResultCode Table::UpdateRow (AnyDataId rowId, Table::Row &changedValues)
     return ResultCode::OK;
 }
 
-ResultCode Table::DeleteRow (AnyDataId rowId)
+ResultCode Table::DeleteRow (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard, AnyDataId rowId)
 {
+    if (!CheckWriteGuard (writeGuard))
+    {
+        return ResultCode::INVARIANTS_VIOLATED;
+    }
+
     auto rowIterator = rows_.find (rowId);
     if (rowIterator == rows_.end ())
     {
@@ -598,10 +609,10 @@ ResultCode Table::DeleteRow (AnyDataId rowId)
     return ResultCode::OK;
 }
 
-ResultCode TableReadCursor::Advance (int64_t step)
+ResultCode TableReadCursor::Advance (const std::shared_ptr <Disco::SafeLockGuard> &readOrWriteGuard, int64_t step)
 {
     assert(baseCursor_);
-    if (baseCursor_)
+    if (baseCursor_ && table_->CheckReadOrWriteGuard (readOrWriteGuard))
     {
         return baseCursor_->Advance (step);
     }
@@ -611,7 +622,8 @@ ResultCode TableReadCursor::Advance (int64_t step)
     }
 }
 
-ResultCode TableReadCursor::Get (AnyDataId columnId, const AnyDataContainer *&output) const
+ResultCode TableReadCursor::Get (const std::shared_ptr <Disco::SafeLockGuard> &readOrWriteGuard,
+                                 AnyDataId columnId, const AnyDataContainer *&output) const
 {
     // If table was deleted, index deletion will invalidate base cursor, but there is no invalidation mechanism
     // for table cursors. Because of it, we should get current row id from base cursor to check if it is valid.
@@ -621,6 +633,11 @@ ResultCode TableReadCursor::Get (AnyDataId columnId, const AnyDataContainer *&ou
     if (result != ResultCode::OK)
     {
         return result;
+    }
+
+    if (!table_->CheckReadOrWriteGuard (readOrWriteGuard))
+    {
+        return ResultCode::INVARIANTS_VIOLATED;
     }
 
     return table_->GetColumnValue (columnId, currentId, output);
@@ -647,7 +664,8 @@ ResultCode TableReadCursor::GetCurrentId (AnyDataId &output) const
     }
 }
 
-ResultCode TableEditCursor::Update (Table::Row &changedValues)
+ResultCode TableEditCursor::Update (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard,
+                                    Table::Row &changedValues)
 {
     AnyDataId currentId;
     ResultCode result = GetCurrentId (currentId);
@@ -657,10 +675,10 @@ ResultCode TableEditCursor::Update (Table::Row &changedValues)
         return result;
     }
 
-    return table_->UpdateRow (currentId, changedValues);
+    return table_->UpdateRow (writeGuard, currentId, changedValues);
 }
 
-ResultCode TableEditCursor::DeleteCurrent ()
+ResultCode TableEditCursor::DeleteCurrent (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard)
 {
     AnyDataId currentId;
     ResultCode result = GetCurrentId (currentId);
@@ -670,7 +688,7 @@ ResultCode TableEditCursor::DeleteCurrent ()
         return result;
     }
 
-    return table_->DeleteRow (currentId);
+    return table_->DeleteRow (writeGuard, currentId);
 }
 
 TableEditCursor::TableEditCursor (Table *table, IndexCursor *indexCursor)

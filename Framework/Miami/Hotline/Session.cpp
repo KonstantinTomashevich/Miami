@@ -12,6 +12,11 @@ Session::Session (Disco::Context *multithreadingContext)
 {
 }
 
+Disco::ReadWriteGuard &Session::ReadWriteGuard ()
+{
+    return guard_;
+}
+
 bool Session::CheckReadOrWriteGuard (const std::shared_ptr <Disco::SafeLockGuard> &readOrWriteGuard) const
 {
     if (Disco::IsReadOrWriteCaptured (readOrWriteGuard, guard_))
