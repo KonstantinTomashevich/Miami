@@ -65,7 +65,7 @@ void Context::RegisterMessages ()
                 {
                     AddDelayedOutput (
                         "Received response to query " + std::to_string (message.queryId_) +
-                        ". Operation result code is " + std::to_string (static_cast<uint64_t>(message.result_)) +
+                        ". Operation result code is " + Messaging::GetOperationResultName (message.result_) +
                         ".\n");
                 });
         });

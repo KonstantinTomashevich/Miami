@@ -329,6 +329,93 @@ const char *GetMessageName (Message message)
     return "UNKNOWN";
 }
 
+const char *GetOperationResultName (OperationResult operationResult)
+{
+    switch (operationResult)
+    {
+        case OperationResult::OK:
+            return "OK";
+
+        case OperationResult::TIME_OUT:
+            return "TIME_OUT";
+
+        case OperationResult::INTERNAL_ERROR:
+            return "INTERNAL_ERROR";
+
+        case OperationResult::ALREADY_HAS_WRITE_ACCESS:
+            return "ALREADY_HAS_WRITE_ACCESS";
+
+        case OperationResult::ALREADY_HAS_READ_ACCESS:
+            return "ALREADY_HAS_READ_ACCESS";
+
+        case OperationResult::CONDUIT_READ_ACCESS_REQUIRED:
+            return "CONDUIT_READ_ACCESS_REQUIRED";
+
+        case OperationResult::CONDUIT_READ_OR_WRITE_ACCESS_REQUIRED:
+            return "CONDUIT_READ_OR_WRITE_ACCESS_REQUIRED";
+
+        case OperationResult::CONDUIT_WRITE_ACCESS_REQUIRED:
+            return "CONDUIT_WRITE_ACCESS_REQUIRED";
+
+        case OperationResult::TABLE_READ_ACCESS_REQUIRED:
+            return "TABLE_READ_ACCESS_REQUIRED";
+
+        case OperationResult::TABLE_READ_OR_WRITE_ACCESS_REQUIRED:
+            return "TABLE_READ_OR_WRITE_ACCESS_REQUIRED";
+
+        case OperationResult::TABLE_WRITE_ACCESS_REQUIRED:
+            return "TABLE_WRITE_ACCESS_REQUIRED";
+
+        case OperationResult::CURSOR_ADVANCE_STOPPED_AT_BEGIN:
+            return "CURSOR_ADVANCE_STOPPED_AT_BEGIN";
+
+        case OperationResult::CURSOR_ADVANCE_STOPPED_AT_END:
+            return "CURSOR_ADVANCE_STOPPED_AT_END";
+
+        case OperationResult::CURSOR_GET_CURRENT_UNABLE_TO_GET_FROM_END:
+            return "CURSOR_GET_CURRENT_UNABLE_TO_GET_FROM_END";
+
+        case OperationResult::COLUMN_WITH_GIVEN_ID_NOT_FOUND:
+            return "COLUMN_WITH_GIVEN_ID_NOT_FOUND";
+
+        case OperationResult::INDEX_WITH_GIVEN_ID_NOT_FOUND:
+            return "INDEX_WITH_GIVEN_ID_NOT_FOUND";
+
+        case OperationResult::ROW_WITH_GIVEN_ID_NOT_FOUND:
+            return "ROW_WITH_GIVEN_ID_NOT_FOUND";
+
+        case OperationResult::TABLE_WITH_GIVEN_ID_NOT_FOUND:
+            return "TABLE_WITH_GIVEN_ID_NOT_FOUND";
+
+        case OperationResult::TABLE_NAME_SHOULD_NOT_BE_EMPTY:
+            return "TABLE_NAME_SHOULD_NOT_BE_EMPTY";
+
+        case OperationResult::COLUMN_NAME_SHOULD_NOT_BE_EMPTY:
+            return "COLUMN_NAME_SHOULD_NOT_BE_EMPTY";
+
+        case OperationResult::INDEX_NAME_SHOULD_NOT_BE_EMPTY:
+            return "INDEX_NAME_SHOULD_NOT_BE_EMPTY";
+
+        case OperationResult::INDEX_MUST_DEPEND_ON_AT_LEAST_ONE_COLUMN:
+            return "INDEX_MUST_DEPEND_ON_AT_LEAST_ONE_COLUMN";
+
+        case OperationResult::COLUMN_REMOVAL_BLOCKED_BY_DEPENDANT_INDEX:
+            return "COLUMN_REMOVAL_BLOCKED_BY_DEPENDANT_INDEX";
+
+        case OperationResult::INDEX_REMOVAL_BLOCKED_BY_DEPENDANT_CURSORS:
+            return "INDEX_REMOVAL_BLOCKED_BY_DEPENDANT_CURSORS";
+
+        case OperationResult::TABLE_REMOVAL_BLOCKED:
+            return "TABLE_REMOVAL_BLOCKED";
+
+        case OperationResult::NEW_COLUMN_VALUE_TYPE_MISMATCH:
+            return "NEW_COLUMN_VALUE_TYPE_MISMATCH";
+    }
+
+    assert (false);
+    return "UNKNOWN";
+}
+
 Hotline::MessageParser VoidOperationResultResponse::CreateParserWithCallback (
     std::function <void (VoidOperationResultResponse &, Hotline::SocketSession *)> &&callback)
 {
@@ -472,6 +559,7 @@ IdsResponse::CreateParserWithCallback (std::function <void (IdsResponse &, Hotli
 void IdsResponse::Write (Message messageType, Hotline::SocketSession *session) const
 {
     START_WRITE_MAPPING;
+    MAP_POD_WRITE(queryId_);
     MAP_POD_VECTOR_WRITE(ids_);
     END_WRITE_MAPPING;
 }

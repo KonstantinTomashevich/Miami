@@ -25,7 +25,7 @@ struct SessionExtension final
 {
     /// Precalculated ISO CRC-64 hash of "Miami::App::Server::SessionExtension".
     static constexpr uint64_t TYPE_ID = 0x3a6ee1b969ccb95f;
-    
+
     struct TableAccess
     {
         std::shared_ptr <Disco::SafeLockGuard> guard_ = nullptr;
@@ -36,7 +36,7 @@ struct SessionExtension final
     std::shared_ptr <Disco::SafeLockGuard> conduitReadGuard_ = nullptr;
     std::shared_ptr <Disco::SafeLockGuard> conduitWriteGuard_ = nullptr;
 
-    std::unordered_map <Richard::AnyDataId, TableAccess> tableAccessors_ {};
+    std::unordered_map <Richard::AnyDataId, TableAccess> tableAccesses_ {};
     std::unordered_map <Richard::AnyDataId, std::unique_ptr <Richard::TableReadCursor>> readCursors_;
     std::unordered_map <Richard::AnyDataId, std::unique_ptr <Richard::TableEditCursor>> editCursors_;
 };
