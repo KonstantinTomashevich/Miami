@@ -377,7 +377,7 @@ void Context::RegisterMessages ()
         [this] () -> Hotline::MessageParser
         {
             return Messaging::AddRowRequest::CreateParserWithCallback (
-                [this] (const Messaging::AddRowRequest &message, Hotline::SocketSession *session)
+                [this] (Messaging::AddRowRequest &message, Hotline::SocketSession *session)
                 {
                     // TODO: Print more info?
                     Evan::Logger::Get ().Log (

@@ -37,8 +37,9 @@ struct SessionExtension final
     std::shared_ptr <Disco::SafeLockGuard> conduitWriteGuard_ = nullptr;
 
     std::unordered_map <Richard::AnyDataId, TableAccess> tableAccesses_ {};
-    std::unordered_map <Richard::AnyDataId, std::unique_ptr <Richard::TableReadCursor>> readCursors_;
-    std::unordered_map <Richard::AnyDataId, std::unique_ptr <Richard::TableEditCursor>> editCursors_;
+    Richard::AnyDataId nextCursorId_ = 0;
+    std::unordered_map <Richard::AnyDataId, std::unique_ptr <Richard::TableReadCursor>> readCursors_ {};
+    std::unordered_map <Richard::AnyDataId, std::unique_ptr <Richard::TableEditCursor>> editCursors_ {};
 };
 
 void ProcessGetTableReadAccessRequest (const ProcessingContext &context,
@@ -90,7 +91,7 @@ void ProcessRemoveIndexRequest (const ProcessingContext &context,
                                 const Messaging::TablePartOperationRequest &message);
 
 void ProcessAddRowRequest (const ProcessingContext &context,
-                           const Messaging::AddRowRequest &message);
+                           Messaging::AddRowRequest &message);
 
 void ProcessCursorAdvanceRequest (const ProcessingContext &context,
                                   const Messaging::CursorAdvanceRequest &message);

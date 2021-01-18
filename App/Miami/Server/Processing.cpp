@@ -121,8 +121,14 @@ OperationResult MapDatabaseResultToOperationResult (Richard::ResultCode result)
     }
 }
 
-std::pair <std::shared_ptr <Disco::SafeLockGuard>, Richard::Table *> GetTableReadOrWriteAccessInfo (
-    const SessionExtension *extension, Richard::AnyDataId id)
+/// SessionExtension::TableAccess without write access flag.
+struct PureTableAccess
+{
+    std::shared_ptr <Disco::SafeLockGuard> guard_;
+    Richard::Table *table_;
+};
+
+PureTableAccess GetTableReadOrWriteAccess (const SessionExtension *extension, Richard::AnyDataId id)
 {
     if (extension == nullptr)
     {
@@ -140,8 +146,7 @@ std::pair <std::shared_ptr <Disco::SafeLockGuard>, Richard::Table *> GetTableRea
     }
 }
 
-std::pair <std::shared_ptr <Disco::SafeLockGuard>, Richard::Table *> GetTableWriteAccessInfo (
-    const SessionExtension *extension, Richard::AnyDataId id)
+PureTableAccess GetTableWriteAccess (const SessionExtension *extension, Richard::AnyDataId id)
 {
     // TODO: Rewrite with less duplication.
     if (extension == nullptr)
@@ -159,159 +164,733 @@ std::pair <std::shared_ptr <Disco::SafeLockGuard>, Richard::Table *> GetTableWri
         return {iterator->second.guard_, iterator->second.tableWeakPointer_};
     }
 }
+
+bool EnsureNoTableAccess (const ProcessingContext &context, const SessionExtension *extension,
+                          QueryId queryId, ResourceId tableId)
+{
+    {
+        PureTableAccess tableWriteAccess = GetTableWriteAccess (extension, tableId);
+        if (tableWriteAccess.guard_ != nullptr)
+        {
+            SendVoidResult (context, queryId, OperationResult::ALREADY_HAS_WRITE_ACCESS);
+            return false;
+        }
+    }
+
+    {
+        PureTableAccess tableReadOrWriteAccess = GetTableWriteAccess (extension, tableId);
+        if (tableReadOrWriteAccess.guard_ != nullptr)
+        {
+            SendVoidResult (context, queryId, OperationResult::ALREADY_HAS_READ_ACCESS);
+            return false;
+        }
+    }
+
+    return true;
 }
+
+bool GetTable (const ProcessingContext &context, const SessionExtension *extension,
+               QueryId queryId, ResourceId tableId, Richard::Table *&output)
+{
+    assert (extension);
+    assert (context.databaseConduit_);
+
+    Richard::ResultCode databaseResult = context.databaseConduit_->GetTable (
+        extension->conduitReadGuard_ == nullptr ?
+        extension->conduitWriteGuard_ : extension->conduitReadGuard_,
+        tableId, output);
+
+    if (databaseResult == Richard::ResultCode::OK)
+    {
+        return true;
+    }
+    else
+    {
+        SendVoidResult (context, queryId, MapDatabaseResultToOperationResult (databaseResult));
+        return false;
+    }
+}
+
+bool EnsureTableWriteAccess (const ProcessingContext &context, const SessionExtension *extension,
+                             QueryId queryId, ResourceId tableId, PureTableAccess &tableAccess)
+{
+    tableAccess = GetTableWriteAccess (extension, tableId);
+    if (tableAccess.guard_ == nullptr)
+    {
+        SendVoidResult (context, queryId, OperationResult::TABLE_WRITE_ACCESS_REQUIRED);
+        return false;
+    }
+    else
+    {
+        return true;
+    }
+}
+
+bool EnsureTableReadOrWriteAccess (const ProcessingContext &context, const SessionExtension *extension,
+                                   QueryId queryId, ResourceId tableId, PureTableAccess &tableAccess)
+{
+    tableAccess = GetTableReadOrWriteAccess (extension, tableId);
+    if (tableAccess.guard_ == nullptr)
+    {
+        SendVoidResult (context, queryId, OperationResult::TABLE_READ_OR_WRITE_ACCESS_REQUIRED);
+        return false;
+    }
+    else
+    {
+        return true;
+    }
+}
+}
+
+// TODO: Use ifs with pointer asserts? Like not only assertb (table), but also with if (table) for steel stability.
+// TODO: Try to rewrite processors with less duplication.
 
 void ProcessGetTableReadAccessRequest (const ProcessingContext &context,
                                        const TableOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        [context, request (message)] (auto guard)
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                if (!EnsureNoTableAccess (context, extension, request.queryId_, request.tableId_))
+                {
+                    return;
+                }
+
+                if (extension == nullptr || (extension->conduitReadGuard_ == nullptr &&
+                                             extension->conduitWriteGuard_ == nullptr))
+                {
+                    SendVoidResult (context, request.queryId_,
+                                    OperationResult::CONDUIT_READ_OR_WRITE_ACCESS_REQUIRED);
+                }
+                else
+                {
+                    assert (context.databaseConduit_);
+                    Richard::Table *table = nullptr;
+
+                    if (GetTable (context, extension, request.queryId_, request.tableId_, table))
+                    {
+                        assert (table);
+                        Disco::After (
+                            {Disco::AnyLockPointer (&context.session_->Data ().ReadWriteGuard ().Write ()),
+                             Disco::AnyLockPointer (&table->ReadWriteGuard ().Read ())},
+                            [context, request, table] (auto guards)
+                            {
+                                assert (guards.size () == 2u);
+                                SessionExtension *extension = nullptr;
+
+                                if (ExtractSessionExtension (context, request.queryId_, guards[0], extension))
+                                {
+                                    assert (extension);
+                                    extension->tableAccesses_[table->GetId ()] =
+                                        {guards[1], table, false};
+                                    SendVoidResult (context, request.queryId_, OperationResult::OK);
+                                }
+                            },
+                            [context, request] ()
+                            {
+                                SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
+                            });
+                    }
+                }
+            }
+        });
 }
 
 void ProcessGetTableWriteAccessRequest (const ProcessingContext &context,
                                         const TableOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        [context, request (message)] (auto guard)
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                if (!EnsureNoTableAccess (context, extension, request.queryId_, request.tableId_))
+                {
+                    return;
+                }
+
+                if (extension == nullptr || (extension->conduitReadGuard_ == nullptr &&
+                                             extension->conduitWriteGuard_ == nullptr))
+                {
+                    SendVoidResult (context, request.queryId_,
+                                    OperationResult::CONDUIT_READ_OR_WRITE_ACCESS_REQUIRED);
+                }
+                else
+                {
+                    assert (context.databaseConduit_);
+                    Richard::Table *table = nullptr;
+
+                    if (GetTable (context, extension, request.queryId_, request.tableId_, table))
+                    {
+                        assert (table);
+                        Disco::After (
+                            {Disco::AnyLockPointer (&context.session_->Data ().ReadWriteGuard ().Write ()),
+                             Disco::AnyLockPointer (&table->ReadWriteGuard ().Write ())},
+                            [context, request, table] (auto guards)
+                            {
+                                assert (guards.size () == 2u);
+                                SessionExtension *extension = nullptr;
+
+                                if (ExtractSessionExtension (context, request.queryId_, guards[0], extension))
+                                {
+                                    assert (extension);
+                                    extension->tableAccesses_[table->GetId ()] =
+                                        {guards[1], table, true};
+                                    SendVoidResult (context, request.queryId_, OperationResult::OK);
+                                }
+                            },
+                            [context, request] ()
+                            {
+                                SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
+                            });
+                    }
+                }
+            }
+        });
 }
 
 void ProcessCloseTableReadAccessRequest (const ProcessingContext &context,
                                          const TableOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Write (),
+        [context, request (message)] (auto guard)
+        {
+            SessionExtension *extension = nullptr;
+            if (ExtractSessionExtension (context, request.queryId_, guard, extension))
+            {
+                assert (extension);
+                auto iterator = extension->tableAccesses_.find (request.tableId_);
+
+                if (iterator == extension->tableAccesses_.end () ||
+                    (iterator->second.guard_ && iterator->second.isWriteAccess_))
+                {
+                    SendVoidResult (context, request.queryId_, OperationResult::TABLE_READ_ACCESS_REQUIRED);
+                }
+                else
+                {
+                    extension->tableAccesses_.erase (iterator);
+                    SendVoidResult (context, request.queryId_, OperationResult::OK);
+                }
+            }
+        });
 }
 
 void ProcessCloseTableWriteAccessRequest (const ProcessingContext &context,
                                           const TableOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Write (),
+        [context, request (message)] (auto guard)
+        {
+            SessionExtension *extension = nullptr;
+            if (ExtractSessionExtension (context, request.queryId_, guard, extension))
+            {
+                assert (extension);
+                auto iterator = extension->tableAccesses_.find (request.tableId_);
+
+                if (iterator == extension->tableAccesses_.end () ||
+                    (iterator->second.guard_ && !iterator->second.isWriteAccess_))
+                {
+                    SendVoidResult (context, request.queryId_, OperationResult::TABLE_WRITE_ACCESS_REQUIRED);
+                }
+                else
+                {
+                    extension->tableAccesses_.erase (iterator);
+                    SendVoidResult (context, request.queryId_, OperationResult::OK);
+                }
+            }
+        });
 }
 
 void ProcessGetTableNameRequest (const ProcessingContext &context,
                                  const TableOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        [context, request (message)] (auto guard)
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                PureTableAccess tableAccess {};
+                if (EnsureTableReadOrWriteAccess (
+                    context, extension, request.queryId_, request.tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    GetTableNameResponse response {};
+                    response.queryId_ = request.queryId_;
+
+                    Richard::ResultCode result = tableAccess.table_->GetName (
+                        tableAccess.guard_, response.tableName_);
+
+                    if (result == Richard::ResultCode::OK)
+                    {
+                        response.Write (Messaging::Message::GET_TABLE_NAME_RESPONSE, context.session_);
+                    }
+                    else
+                    {
+                        SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                    }
+                }
+            }
+        });
 }
 
 void ProcessCreateReadCursorRequest (const ProcessingContext &context,
                                      const TablePartOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Write (),
+        [context, request (message)] (auto guard)
+        {
+            SessionExtension *extension = nullptr;
+            if (ExtractSessionExtension (context, request.queryId_, guard, extension))
+            {
+                assert (extension);
+                PureTableAccess tableAccess {};
+
+                if (EnsureTableReadOrWriteAccess (
+                    context, extension, request.queryId_, request.tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    CreateOperationResultResponse response {};
+                    response.queryId_ = request.queryId_;
+
+                    Richard::TableReadCursor *cursor = nullptr;
+                    Richard::ResultCode result = tableAccess.table_->CreateReadCursor (
+                        tableAccess.guard_, request.partId_, cursor);
+
+                    if (result == Richard::ResultCode::OK)
+                    {
+                        assert (cursor);
+                        Richard::AnyDataId cursorId = extension->nextCursorId_++;
+                        auto emplaceResult = extension->readCursors_.emplace (cursorId, cursor);
+                        // TODO: Better check later.
+                        assert (emplaceResult.second);
+
+                        response.resourceId_ = cursorId;
+                        response.Write (Messaging::Message::CREATE_OPERATION_RESULT_RESPONSE,
+                                        context.session_);
+                    }
+                    else
+                    {
+                        SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                    }
+                }
+            }
+        });
 }
 
 void ProcessGetColumnsIdsRequest (const ProcessingContext &context,
                                   const TableOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        [context, request (message)] (auto guard)
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                PureTableAccess tableAccess {};
+                if (EnsureTableReadOrWriteAccess (
+                    context, extension, request.queryId_, request.tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    IdsResponse response {};
+                    response.queryId_ = request.queryId_;
+
+                    Richard::ResultCode result = tableAccess.table_->GetColumnsIds (
+                        tableAccess.guard_, response.ids_);
+
+                    if (result == Richard::ResultCode::OK)
+                    {
+                        response.Write (Messaging::Message::RESOURCE_IDS_RESPONSE, context.session_);
+                    }
+                    else
+                    {
+                        SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                    }
+                }
+            }
+        });
 }
 
 void ProcessGetColumnInfoRequest (const ProcessingContext &context,
                                   const TablePartOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        [context, request (message)] (auto guard)
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                PureTableAccess tableAccess {};
+                if (EnsureTableReadOrWriteAccess (
+                    context, extension, request.queryId_, request.tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    ColumnInfoResponse response {};
+                    response.queryId_ = request.queryId_;
+
+                    Richard::ColumnInfo info {};
+                    Richard::ResultCode result = tableAccess.table_->GetColumnInfo (
+                        tableAccess.guard_, request.partId_, info);
+
+                    if (result == Richard::ResultCode::OK)
+                    {
+                        response.dataType_ = info.dataType_;
+                        response.name_ = info.name_;
+                        response.Write (Messaging::Message::GET_COLUMN_INFO_RESPONSE, context.session_);
+                    }
+                    else
+                    {
+                        SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                    }
+                }
+            }
+        });
 }
 
 void ProcessGetIndicesIdsRequest (const ProcessingContext &context,
                                   const TableOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        [context, request (message)] (auto guard)
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                PureTableAccess tableAccess {};
+                if (EnsureTableReadOrWriteAccess (
+                    context, extension, request.queryId_, request.tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    IdsResponse response {};
+                    response.queryId_ = request.queryId_;
+
+                    Richard::ResultCode result = tableAccess.table_->GetIndicesIds (
+                        tableAccess.guard_, response.ids_);
+
+                    if (result == Richard::ResultCode::OK)
+                    {
+                        response.Write (Messaging::Message::RESOURCE_IDS_RESPONSE, context.session_);
+                    }
+                    else
+                    {
+                        SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                    }
+                }
+            }
+        });
 }
 
 void ProcessGetIndexInfoRequest (const ProcessingContext &context,
                                  const TablePartOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        [context, request (message)] (auto guard)
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                PureTableAccess tableAccess {};
+                if (EnsureTableReadOrWriteAccess (
+                    context, extension, request.queryId_, request.tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    IndexInfoResponse response {};
+                    response.queryId_ = request.queryId_;
+
+                    Richard::IndexInfo info {};
+                    Richard::ResultCode result = tableAccess.table_->GetIndexInfo (
+                        tableAccess.guard_, request.partId_, info);
+
+                    if (result == Richard::ResultCode::OK)
+                    {
+                        response.name_ = info.name_;
+                        response.columns_ = info.columns_;
+                        response.Write (Messaging::Message::GET_INDEX_INFO_RESPONSE, context.session_);
+                    }
+                    else
+                    {
+                        SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                    }
+                }
+            }
+        });
 }
 
 void ProcessSetTableNameRequest (const ProcessingContext &context,
                                  const SetTableNameRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        [context, request (message)] (auto guard)
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                PureTableAccess tableAccess {};
+                if (EnsureTableWriteAccess (context, extension, request.queryId_, request.tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    Richard::ResultCode result = tableAccess.table_->SetName (tableAccess.guard_, request.newName_);
+                    SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                }
+            }
+        });
 }
 
 void ProcessCreateEditCursorRequest (const ProcessingContext &context,
                                      const TablePartOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Write (),
+        [context, request (message)] (auto guard)
+        {
+            SessionExtension *extension = nullptr;
+            if (ExtractSessionExtension (context, request.queryId_, guard, extension))
+            {
+                assert (extension);
+                PureTableAccess tableAccess {};
+
+                if (EnsureTableWriteAccess (context, extension, request.queryId_, request.tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    CreateOperationResultResponse response {};
+                    response.queryId_ = request.queryId_;
+
+                    Richard::TableEditCursor *cursor = nullptr;
+                    Richard::ResultCode result = tableAccess.table_->CreateEditCursor (
+                        tableAccess.guard_, request.partId_, cursor);
+
+                    if (result == Richard::ResultCode::OK)
+                    {
+                        assert (cursor);
+                        Richard::AnyDataId cursorId = extension->nextCursorId_++;
+                        auto emplaceResult = extension->editCursors_.emplace (cursorId, cursor);
+                        // TODO: Better check later.
+                        assert (emplaceResult.second);
+
+                        response.resourceId_ = cursorId;
+                        response.Write (Messaging::Message::CREATE_OPERATION_RESULT_RESPONSE,
+                                        context.session_);
+                    }
+                    else
+                    {
+                        SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                    }
+                }
+            }
+        });
 }
 
 void ProcessAddColumnRequest (const ProcessingContext &context,
                               const AddColumnRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        [context, request (message)] (auto guard)
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                PureTableAccess tableAccess {};
+                if (EnsureTableWriteAccess (context, extension, request.queryId_, request.tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    CreateOperationResultResponse response {};
+                    response.queryId_ = request.queryId_;
+
+                    Richard::ResultCode result = tableAccess.table_->AddColumn (
+                        tableAccess.guard_, {0u, request.dataType_, request.name_}, response.resourceId_);
+
+                    if (result == Richard::ResultCode::OK)
+                    {
+                        response.Write (
+                            Messaging::Message::CREATE_OPERATION_RESULT_RESPONSE, context.session_);
+                    }
+                    else
+                    {
+                        SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                    }
+                }
+            }
+        });
 }
 
 void ProcessRemoveColumnRequest (const ProcessingContext &context,
                                  const TablePartOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        [context, request (message)] (auto guard)
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                PureTableAccess tableAccess {};
+                if (EnsureTableWriteAccess (context, extension, request.queryId_, request.tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    Richard::ResultCode result = tableAccess.table_->RemoveColumn (
+                        tableAccess.guard_, request.partId_);
+                    SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                }
+            }
+        });
 }
 
 void ProcessAddIndexRequest (const ProcessingContext &context,
                              const AddIndexRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        [context, request (message)] (auto guard)
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                PureTableAccess tableAccess {};
+                if (EnsureTableWriteAccess (context, extension, request.queryId_, request.tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    CreateOperationResultResponse response {};
+                    response.queryId_ = request.queryId_;
+
+                    Richard::ResultCode result = tableAccess.table_->AddIndex (
+                        tableAccess.guard_, {0u, request.name_, request.columns_}, response.resourceId_);
+
+                    if (result == Richard::ResultCode::OK)
+                    {
+                        response.Write (
+                            Messaging::Message::CREATE_OPERATION_RESULT_RESPONSE, context.session_);
+                    }
+                    else
+                    {
+                        SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                    }
+                }
+            }
+        });
 }
 
 void ProcessRemoveIndexRequest (const ProcessingContext &context,
                                 const TablePartOperationRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        [context, request (message)] (auto guard)
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request.queryId_, guard, extension))
+            {
+                PureTableAccess tableAccess {};
+                if (EnsureTableWriteAccess (context, extension, request.queryId_, request.tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    Richard::ResultCode result = tableAccess.table_->RemoveIndex (tableAccess.guard_, request.partId_);
+                    SendVoidResult (context, request.queryId_, MapDatabaseResultToOperationResult (result));
+                }
+            }
+        });
 }
 
-void ProcessAddRowRequest (const ProcessingContext &context,
-                           const AddRowRequest &message)
+void ProcessAddRowRequest (const ProcessingContext &context, AddRowRequest &message)
 {
-    // TODO: Stub, implement real logic.
-    VoidOperationResultResponse response
-        {message.queryId_, OperationResult::OK};
-    response.Write (Message::VOID_OPERATION_RESULT_RESPONSE, context.session_);
+    using namespace Details;
+    assert (context.session_);
+
+    Disco::After (
+        &context.session_->Data ().ReadWriteGuard ().Read (),
+        // Request is captured using shared pointer because std::function requires all captures to be copyable,
+        // but it's impossible to copy this request because of Richard::AnyDataContainer.
+        [context, request (std::make_shared <AddRowRequest> (std::move (message)))] (auto guard) mutable
+        {
+            const SessionExtension *extension = nullptr;
+            if (ExtractConstSessionExtension (context, request->queryId_, guard, extension))
+            {
+                PureTableAccess tableAccess {};
+                if (EnsureTableWriteAccess (context, extension, request->queryId_, request->tableId_, tableAccess))
+                {
+                    assert (tableAccess.table_);
+                    std::unordered_map <Richard::AnyDataId, Richard::AnyDataContainer> valuesMap;
+
+                    for (auto &idValuePair : request->values_)
+                    {
+                        auto emplaceResult = valuesMap.emplace (idValuePair.first, std::move (idValuePair.second));
+                        if (!emplaceResult.second)
+                        {
+                            SendVoidResult (
+                                context, request->queryId_,
+                                Messaging::OperationResult::DUPLICATE_COLUMN_VALUES_IN_INSERTION_REQUEST);
+                            return;
+                        }
+                    }
+
+                    Richard::ResultCode result = tableAccess.table_->InsertRow (tableAccess.guard_, valuesMap);
+                    SendVoidResult (context, request->queryId_, MapDatabaseResultToOperationResult (result));
+                }
+            }
+        });
 }
 
 void ProcessCursorAdvanceRequest (const ProcessingContext &context,
@@ -393,6 +972,10 @@ void ProcessGetConduitReadAccessRequest (const ProcessingContext &context,
                                 extension->conduitReadGuard_ = guards[1];
                                 SendVoidResult (context, request.queryId_, OperationResult::OK);
                             }
+                        },
+                        [context, request] ()
+                        {
+                            SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
                         });
                 }
                 else
@@ -400,10 +983,6 @@ void ProcessGetConduitReadAccessRequest (const ProcessingContext &context,
                     SendVoidResult (context, request.queryId_, OperationResult::ALREADY_HAS_READ_ACCESS);
                 }
             }
-        },
-        [context, request (message)] ()
-        {
-            SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
         });
 }
 
@@ -441,6 +1020,10 @@ void ProcessGetConduitWriteAccessRequest (const ProcessingContext &context,
                                 extension->conduitWriteGuard_ = guards[1];
                                 SendVoidResult (context, request.queryId_, OperationResult::OK);
                             }
+                        },
+                        [context, request] ()
+                        {
+                            SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
                         });
                 }
                 else
@@ -448,10 +1031,6 @@ void ProcessGetConduitWriteAccessRequest (const ProcessingContext &context,
                     SendVoidResult (context, request.queryId_, OperationResult::ALREADY_HAS_WRITE_ACCESS);
                 }
             }
-        },
-        [context, request (message)] ()
-        {
-            SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
         });
 }
 
@@ -479,10 +1058,6 @@ void ProcessCloseConduitReadAccessRequest (const ProcessingContext &context,
                     SendVoidResult (context, request.queryId_, OperationResult::OK);
                 }
             }
-        },
-        [context, request (message)] ()
-        {
-            SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
         });
 }
 
@@ -510,10 +1085,6 @@ void ProcessCloseConduitWriteAccessRequest (const ProcessingContext &context,
                     SendVoidResult (context, request.queryId_, OperationResult::OK);
                 }
             }
-        },
-        [context, request (message)] ()
-        {
-            SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
         });
 }
 
@@ -558,10 +1129,6 @@ void ProcessGetTableIdsRequest (const ProcessingContext &context,
                     }
                 }
             }
-        },
-        [context, request (message)] ()
-        {
-            SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
         });
 }
 
@@ -603,10 +1170,6 @@ void ProcessAddTableRequest (const ProcessingContext &context,
                     }
                 }
             }
-        },
-        [context, request (message)] ()
-        {
-            SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
         });
 }
 
@@ -630,25 +1193,21 @@ void ProcessRemoveTableRequest (const ProcessingContext &context,
                 else
                 {
                     assert (context.databaseConduit_);
-                    auto tableAccess = GetTableWriteAccessInfo (extension, request.tableId_);
-                    if (tableAccess.first == nullptr)
+                    PureTableAccess tableAccess = GetTableWriteAccess (extension, request.tableId_);
+                    if (tableAccess.guard_ == nullptr)
                     {
                         SendVoidResult (context, request.queryId_, OperationResult::TABLE_WRITE_ACCESS_REQUIRED);
                     }
                     else
                     {
                         Richard::ResultCode resultCode = context.databaseConduit_->RemoveTable (
-                            extension->conduitWriteGuard_, tableAccess.first, request.tableId_);
+                            extension->conduitWriteGuard_, tableAccess.guard_, request.tableId_);
 
                         SendVoidResult (context, request.queryId_,
                                         MapDatabaseResultToOperationResult (resultCode));
                     }
                 }
             }
-        },
-        [context, request (message)] ()
-        {
-            SendVoidResult (context, request.queryId_, OperationResult::TIME_OUT);
         });
 }
 }

@@ -87,9 +87,10 @@ private:
     /// TODO: Temporary helper method for column value accessors. Will be reworked with memory mapping support.
     free_call ResultCode GetColumnValue (AnyDataId columnId, AnyDataId rowId, const AnyDataContainer *&output) const;
 
-    free_call ResultCode UpdateRow (AnyDataId rowId, moved_in Row &changedValues);
+    free_call ResultCode UpdateRow (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard,
+                                    AnyDataId rowId, moved_in Row &changedValues);
 
-    free_call ResultCode DeleteRow (AnyDataId rowId);
+    free_call ResultCode DeleteRow (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard, AnyDataId rowId);
 
     const AnyDataId id_;
     Disco::ReadWriteGuard guard_;
@@ -114,9 +115,10 @@ private:
 class TableReadCursor
 {
 public:
-    free_call ResultCode Advance (int64_t step);
+    free_call ResultCode Advance (const std::shared_ptr <Disco::SafeLockGuard> &readOrWriteGuard, int64_t step);
 
-    free_call ResultCode Get (AnyDataId columnId, const AnyDataContainer *&output) const;
+    free_call ResultCode Get (const std::shared_ptr <Disco::SafeLockGuard> &readOrWriteGuard,
+                              AnyDataId columnId, const AnyDataContainer *&output) const;
 
 protected:
     TableReadCursor (Table *table, IndexCursor *indexCursor);
@@ -136,9 +138,10 @@ private:
 class TableEditCursor final : public TableReadCursor
 {
 public:
-    free_call ResultCode Update (moved_in Table::Row &changedValues);
+    free_call ResultCode Update (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard,
+                                 moved_in Table::Row &changedValues);
 
-    free_call ResultCode DeleteCurrent ();
+    free_call ResultCode DeleteCurrent (const std::shared_ptr <Disco::SafeLockGuard> &writeGuard);
 
 private:
     TableEditCursor (Table *table, IndexCursor *indexCursor);
